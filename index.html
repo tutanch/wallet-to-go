@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nimiq Wallet</title>
+    <link rel="icon" href="public/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@nimiq/style@0.8.3/nimiq-style.min.css">
+    <link rel="stylesheet" href="src/styles/app.css">
+    <script src="https://cdn.jsdelivr.net/npm/qr-creator@1.0.0/dist/qr-creator.min.js"></script>
+</head>
+<body class="nq-blue-bg">
+    <div id="app">
+        <div class="loading-screen">
+            <h1 class="nq-h1">Loading Nimiq...</h1>
+            <p class="nq-text">Initializing wallet</p>
+        </div>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "@nimiq/core": "./lib/nimiq-core/web/index.js"
+        }
+    }
+    </script>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
