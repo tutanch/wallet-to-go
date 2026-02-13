@@ -113,6 +113,14 @@ export async function dashboardView() {
         render();
     });
 
+    // If consensus is already established (e.g. navigating back from another view),
+    // the listener above won't fire — so check current state immediately.
+    if (await network.isConsensusEstablished()) {
+        consensus = 'established';
+        await fetchFullData();
+        render();
+    }
+
     // Head changes update block height directly from the event —
     // no network call needed. Balance is NOT refetched here, as it
     // only changes on transactions (matching the Nimiq Wallet pattern).
