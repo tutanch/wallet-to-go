@@ -46,12 +46,17 @@ export async function historyView() {
         }
     } catch (e) {
         const txList = el.querySelector('#tx-list');
-        txList.innerHTML = `<p class="nq-text error-text">Failed to load: ${e.message}</p>`;
+        txList.innerHTML = '';
+        const errorP = document.createElement('p');
+        errorP.className = 'nq-text error-text';
+        errorP.textContent = 'Failed to load: ' + e.message;
+        txList.appendChild(errorP);
     }
 
     return el;
 }
 
+// Build tx items with DOM API (not innerHTML) to prevent XSS from network data
 export function renderTxItem(tx, ownAddress) {
     const isSent = tx.sender === ownAddress;
     const counterparty = isSent ? tx.recipient : tx.sender;
@@ -63,19 +68,36 @@ export function renderTxItem(tx, ownAddress) {
         ? new Date(tx.timestamp * 1000).toLocaleString()
         : 'Pending';
 
-    const state = tx.state === 'confirmed' ? '' : ` (${tx.state || 'pending'})`;
+    const stateStr = tx.state === 'confirmed' ? '' : ` (${tx.state || 'pending'})`;
 
     const item = document.createElement('div');
     item.className = `tx-item ${isSent ? 'tx-sent' : 'tx-received'}`;
-    item.innerHTML = `
-        <div class="tx-direction">${isSent ? '&#x2191;' : '&#x2193;'}</div>
-        <div class="tx-details">
-            <span class="tx-address">${shortAddr}</span>
-            <span class="tx-time">${timestamp}${state}</span>
-        </div>
-        <div class="tx-amount ${isSent ? 'amount-sent' : 'amount-received'}">
-            ${isSent ? '-' : '+'}${formatNim(tx.value)} NIM
-        </div>
-    `;
+
+    const dirDiv = document.createElement('div');
+    dirDiv.className = 'tx-direction';
+    dirDiv.textContent = isSent ? '\u2191' : '\u2193';
+
+    const detailsDiv = document.createElement('div');
+    detailsDiv.className = 'tx-details';
+
+    const addrSpan = document.createElement('span');
+    addrSpan.className = 'tx-address';
+    addrSpan.textContent = shortAddr;
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'tx-time';
+    timeSpan.textContent = timestamp + stateStr;
+
+    detailsDiv.appendChild(addrSpan);
+    detailsDiv.appendChild(timeSpan);
+
+    const amountDiv = document.createElement('div');
+    amountDiv.className = `tx-amount ${isSent ? 'amount-sent' : 'amount-received'}`;
+    amountDiv.textContent = `${isSent ? '-' : '+'}${formatNim(tx.value)} NIM`;
+
+    item.appendChild(dirDiv);
+    item.appendChild(detailsDiv);
+    item.appendChild(amountDiv);
+
     return item;
 }

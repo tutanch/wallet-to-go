@@ -70,11 +70,15 @@ export async function dashboardView() {
         });
 
         el.querySelector('#address-copy').addEventListener('click', async () => {
-            await navigator.clipboard.writeText(address);
-            const addressEl = el.querySelector('.address-text');
-            const original = addressEl.textContent;
-            addressEl.textContent = 'Copied!';
-            setTimeout(() => { addressEl.textContent = original; }, 1500);
+            try {
+                await navigator.clipboard.writeText(address);
+                const addressEl = el.querySelector('.address-text');
+                const original = addressEl.textContent;
+                addressEl.textContent = 'Copied!';
+                setTimeout(() => { addressEl.textContent = original; }, 1500);
+            } catch {
+                // Clipboard API may fail without HTTPS or permissions
+            }
         });
 
         el.querySelector('#btn-send').addEventListener('click', () => navigate('#send'));
@@ -90,44 +94,75 @@ export async function dashboardView() {
     // Start network connection
     await network.connect();
 
+    // Fetch full data (balance + history) — called sparingly to avoid rate limits
+    let lastFullFetch = 0;
+    const MIN_FETCH_INTERVAL = 30000; // 30 seconds minimum between history fetches
+
+    async function fetchFullData() {
+        const now = Date.now();
+        if (now - lastFullFetch < MIN_FETCH_INTERVAL) return;
+        lastFullFetch = now;
+        try {
+            balance = await network.getBalance(address);
+            recentTxs = await network.getHistory(address, 10);
+            headHeight = await network.getHeadHeight();
+        } catch (e) {
+            console.error('Failed to fetch data:', e);
+        }
+    }
+
     const removeConsensus = network.onConsensusChanged(async (state) => {
         consensus = state;
         if (state === 'established') {
-            try {
-                balance = await network.getBalance(address);
-                recentTxs = await network.getHistory(address, 10);
-                headHeight = await network.getHeadHeight();
-            } catch (e) {
-                console.error('Failed to fetch data:', e);
-            }
+            await fetchFullData();
         }
         render();
     });
 
+    // Debounce head changes — only update balance (cheap) and block height,
+    // skip getHistory (expensive, causes rate limit) on every block
+    let headDebounceTimer = null;
     const removeHead = network.onHeadChanged(async () => {
-        try {
-            headHeight = await network.getHeadHeight();
-            if (await network.isConsensusEstablished()) {
-                balance = await network.getBalance(address);
-                recentTxs = await network.getHistory(address, 10);
-                consensus = 'established';
+        if (headDebounceTimer) return; // Skip if already scheduled
+        headDebounceTimer = setTimeout(async () => {
+            headDebounceTimer = null;
+            try {
+                headHeight = await network.getHeadHeight();
+                if (await network.isConsensusEstablished()) {
+                    balance = await network.getBalance(address);
+                    consensus = 'established';
+                }
+            } catch (e) {
+                console.error('Failed to update:', e);
             }
-        } catch (e) {
-            console.error('Failed to update:', e);
-        }
-        render();
+            render();
+        }, 10000); // Update at most every 10 seconds
     });
 
+    // Transaction listener handles new txs in real-time without polling.
+    // Store the removal function once resolved to handle cleanup race condition.
+    let removeTxListener = null;
+    let cleaned = false;
     network.addTransactionListener((tx) => {
         recentTxs = [tx, ...recentTxs].slice(0, 10);
         render();
-    }, [address]);
+    }, [address]).then(remove => {
+        if (cleaned) {
+            // View was already cleaned up before listener resolved — remove immediately
+            if (typeof remove === 'function') remove();
+        } else {
+            removeTxListener = remove;
+        }
+    });
 
     return {
         element: el,
         cleanup: () => {
+            cleaned = true;
             removeConsensus();
             removeHead();
+            if (headDebounceTimer) clearTimeout(headDebounceTimer);
+            if (typeof removeTxListener === 'function') removeTxListener();
         },
     };
 }

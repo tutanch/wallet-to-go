@@ -1,6 +1,8 @@
 import { loadNimiq } from '../nimiq.js';
 import { getNetworkConfig, getSelectedNetwork } from '../config.js';
 
+const CONSENSUS_TIMEOUT_MS = 120000; // 2 minutes
+
 let clientPromise = null;
 let currentNetwork = null;
 let consensusListeners = [];
@@ -47,9 +49,13 @@ export async function getClient() {
     return clientPromise;
 }
 
-export async function waitForConsensus() {
+export async function waitForConsensus(timeoutMs = CONSENSUS_TIMEOUT_MS) {
     const client = await getClient();
-    await client.waitForConsensusEstablished();
+    const consensusPromise = client.waitForConsensusEstablished();
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Consensus timeout: could not connect to network')), timeoutMs);
+    });
+    await Promise.race([consensusPromise, timeoutPromise]);
 }
 
 export async function isConsensusEstablished() {
@@ -59,14 +65,14 @@ export async function isConsensusEstablished() {
 
 export async function getBalance(address) {
     const client = await getClient();
-    await client.waitForConsensusEstablished();
+    await waitForConsensus();
     const accounts = await client.getAccounts([address]);
     return accounts[0] ? accounts[0].balance : 0;
 }
 
 export async function getHistory(address, limit = 50) {
     const client = await getClient();
-    await client.waitForConsensusEstablished();
+    await waitForConsensus();
     const network = getSelectedNetwork();
     const minPeers = network === 'main' ? undefined : 1;
     return client.getTransactionsByAddress(
@@ -81,17 +87,19 @@ export async function getHistory(address, limit = 50) {
 
 export async function sendTransaction(tx) {
     const client = await getClient();
-    await client.waitForConsensusEstablished();
+    await waitForConsensus();
     return client.sendTransaction(tx);
 }
 
 export async function getHeadHeight() {
     const client = await getClient();
+    await waitForConsensus();
     return client.getHeadHeight();
 }
 
 export async function getNetworkId() {
     const client = await getClient();
+    await waitForConsensus();
     return client.getNetworkId();
 }
 
@@ -111,7 +119,7 @@ export function onHeadChanged(callback) {
 
 export async function addTransactionListener(callback, addresses) {
     const client = await getClient();
-    client.addTransactionListener(callback, addresses);
+    return client.addTransactionListener(callback, addresses);
 }
 
 export async function disconnect() {

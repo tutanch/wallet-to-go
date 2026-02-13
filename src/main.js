@@ -36,17 +36,19 @@ async function init() {
         initRouter();
     } catch (e) {
         console.error('Failed to initialize Nimiq:', e);
-        document.getElementById('app').innerHTML = `
+        const app = document.getElementById('app');
+        app.innerHTML = `
             <div class="nq-card">
                 <div class="nq-card-header">
                     <h1 class="nq-h1">Initialization Error</h1>
                 </div>
                 <div class="nq-card-body">
-                    <p class="nq-text error-text">${e.message}</p>
+                    <p class="nq-text error-text" id="init-error"></p>
                     <p class="nq-text">This app requires a modern browser with WebAssembly support.</p>
                 </div>
             </div>
         `;
+        app.querySelector('#init-error').textContent = e.message;
     }
 }
 

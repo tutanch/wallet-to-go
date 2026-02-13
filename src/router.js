@@ -1,5 +1,9 @@
+import { hasKey } from './modules/key-store.js';
+
 const routes = {};
 let currentCleanup = null;
+
+const PUBLIC_ROUTES = new Set(['#welcome', '#create', '#import']);
 
 export function registerRoute(hash, viewFactory) {
     routes[hash] = viewFactory;
@@ -16,6 +20,15 @@ export function getCurrentRoute() {
 async function handleHashChange() {
     const hash = getCurrentRoute();
     const $app = document.getElementById('app');
+
+    // Route guard: redirect to #welcome if no wallet exists on protected routes
+    if (!PUBLIC_ROUTES.has(hash)) {
+        const walletExists = await hasKey();
+        if (!walletExists) {
+            navigate('#welcome');
+            return;
+        }
+    }
 
     if (currentCleanup) {
         currentCleanup();

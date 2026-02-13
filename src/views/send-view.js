@@ -31,7 +31,7 @@ export async function sendView() {
                 </div>
                 <div class="form-group">
                     <label class="nq-label">Message (optional, max 64 bytes)</label>
-                    <input type="text" class="nq-input" id="message" placeholder="Optional message" maxlength="64">
+                    <input type="text" class="nq-input" id="message" placeholder="Optional message">
                 </div>
                 <div class="form-group">
                     <label class="nq-label">Fee (luna)</label>
@@ -55,10 +55,13 @@ export async function sendView() {
     `;
 
     let confirmed = false;
+    let sending = false; // Double-send protection
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 
     el.querySelector('#btn-send').addEventListener('click', async () => {
+        if (sending) return; // Prevent double-click
+
         const errorEl = el.querySelector('#error');
         const successEl = el.querySelector('#success');
         errorEl.style.display = 'none';
@@ -84,6 +87,12 @@ export async function sendView() {
                 return;
             }
 
+            if (recipientValue.replace(/\s/g, '') === address.replace(/\s/g, '')) {
+                errorEl.textContent = 'Warning: You are sending to your own address.';
+                errorEl.style.display = '';
+                // Allow proceeding — just warn, don't block
+            }
+
             if (!amountValue || amountValue <= 0) {
                 errorEl.textContent = 'Please enter a valid amount.';
                 errorEl.style.display = '';
@@ -105,13 +114,9 @@ export async function sendView() {
         }
 
         // Step 2: Sign and send
-        const recipientValue = el.querySelector('#recipient').value.trim();
-        const amountValue = parseFloat(el.querySelector('#amount').value);
-        const feeValue = parseInt(el.querySelector('#fee').value) || 0;
-        const messageValue = el.querySelector('#message').value;
-        const password = el.querySelector('#password').value;
+        const pwInput = el.querySelector('#password');
 
-        if (!password) {
+        if (!pwInput.value) {
             errorEl.textContent = 'Please enter your password.';
             errorEl.style.display = '';
             return;
@@ -120,14 +125,23 @@ export async function sendView() {
         const btn = el.querySelector('#btn-send');
         btn.disabled = true;
         btn.textContent = 'Signing...';
+        sending = true;
 
         try {
-            const entropy = await getKey(password);
+            const entropy = await getKey(pwInput.value);
+            // Clear password immediately after decryption
+            pwInput.value = '';
+
             if (!entropy) {
                 throw new Error('Wrong password or no wallet found.');
             }
 
             btn.textContent = 'Sending...';
+
+            const recipientValue = el.querySelector('#recipient').value.trim();
+            const amountValue = el.querySelector('#amount').value;
+            const feeValue = parseInt(el.querySelector('#fee').value) || 0;
+            const messageValue = el.querySelector('#message').value;
 
             const valueLuna = nimToLuna(amountValue);
             const validityStartHeight = await network.getHeadHeight();
@@ -152,10 +166,22 @@ export async function sendView() {
 
             setTimeout(() => navigate('#dashboard'), 3000);
         } catch (e) {
-            errorEl.textContent = e.message || 'Transaction failed.';
+            pwInput.value = '';
+            console.error('Transaction failed:', e);
+            const msg = e.message || '';
+            if (msg.includes('Wrong password') || msg.includes('no wallet')) {
+                errorEl.textContent = 'Wrong password or no wallet found.';
+            } else if (msg.includes('Network ID mismatch')) {
+                errorEl.textContent = 'Network mismatch. Please check your network setting.';
+            } else if (msg.includes('Consensus timeout')) {
+                errorEl.textContent = 'Could not connect to network. Please try again.';
+            } else {
+                errorEl.textContent = 'Transaction failed. Please try again.';
+            }
             errorEl.style.display = '';
             btn.disabled = false;
             btn.textContent = 'Send Transaction';
+            sending = false;
         }
     });
 

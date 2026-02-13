@@ -14,23 +14,6 @@ export async function importFromMnemonic(words) {
     return entropyToWalletInfo(entropy);
 }
 
-export async function getAddressFromEntropy(entropy) {
-    const Nimiq = await loadNimiq();
-    const masterKey = entropy.toExtendedPrivateKey();
-    const childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
-    const publicKey = Nimiq.PublicKey.derive(childKey.privateKey);
-    return publicKey.toAddress().toUserFriendlyAddress();
-}
-
-export async function deriveKeys(entropy) {
-    const Nimiq = await loadNimiq();
-    const masterKey = entropy.toExtendedPrivateKey();
-    const childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
-    const privateKey = childKey.privateKey;
-    const publicKey = Nimiq.PublicKey.derive(privateKey);
-    return { privateKey, publicKey };
-}
-
 export async function getMnemonic(entropy) {
     const Nimiq = await loadNimiq();
     return Nimiq.MnemonicUtils.entropyToMnemonic(entropy);
@@ -39,17 +22,16 @@ export async function getMnemonic(entropy) {
 async function entropyToWalletInfo(entropy) {
     const Nimiq = await loadNimiq();
     const mnemonic = Nimiq.MnemonicUtils.entropyToMnemonic(entropy);
+    // Derive address without keeping privateKey in the returned object —
+    // privateKey is only needed at signing time and is re-derived there.
     const masterKey = entropy.toExtendedPrivateKey();
     const childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
-    const privateKey = childKey.privateKey;
-    const publicKey = Nimiq.PublicKey.derive(privateKey);
+    const publicKey = Nimiq.PublicKey.derive(childKey.privateKey);
     const address = publicKey.toAddress().toUserFriendlyAddress();
 
     return {
         entropy,
         mnemonic,
         address,
-        publicKey,
-        privateKey,
     };
 }

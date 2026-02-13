@@ -12,6 +12,7 @@ export function importView() {
                 <h1 class="nq-h1">Import Wallet</h1>
                 <p class="nq-text">Enter your 24 recovery words to restore your wallet.</p>
             </div>
+            <form id="import-form" style="display: contents;">
             <div class="nq-card-body">
                 <div class="form-group">
                     <textarea class="nq-input mnemonic-input" id="mnemonic" rows="4"
@@ -26,34 +27,36 @@ export function importView() {
                 <p class="nq-text error-text" id="error" style="display: none;"></p>
             </div>
             <div class="nq-card-footer">
-                <button class="nq-button-s" id="btn-back">Back</button>
-                <button class="nq-button light-blue" id="btn-import">Import Wallet</button>
+                <button class="nq-button-s" type="button" id="btn-back">Back</button>
+                <button class="nq-button light-blue" type="submit" id="btn-import">Import Wallet</button>
             </div>
+            </form>
         </div>
     `;
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#welcome'));
 
-    el.querySelector('#btn-import').addEventListener('click', async () => {
-        const mnemonicValue = el.querySelector('#mnemonic').value.trim();
-        const password = el.querySelector('#password').value;
-        const confirm = el.querySelector('#password-confirm').value;
+    el.querySelector('#import-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const mnemonicInput = el.querySelector('#mnemonic');
+        const pwInput = el.querySelector('#password');
+        const confirmInput = el.querySelector('#password-confirm');
         const errorEl = el.querySelector('#error');
 
-        const words = mnemonicValue.split(/\s+/);
+        const words = mnemonicInput.value.trim().split(/\s+/);
         if (words.length !== 24) {
             errorEl.textContent = 'Please enter exactly 24 words.';
             errorEl.style.display = '';
             return;
         }
 
-        if (password.length < 8) {
+        if (pwInput.value.length < 8) {
             errorEl.textContent = 'Password must be at least 8 characters.';
             errorEl.style.display = '';
             return;
         }
 
-        if (password !== confirm) {
+        if (pwInput.value !== confirmInput.value) {
             errorEl.textContent = 'Passwords do not match.';
             errorEl.style.display = '';
             return;
@@ -65,10 +68,18 @@ export function importView() {
 
         try {
             const wallet = await importFromMnemonic(words);
-            await saveKey(wallet.entropy, password);
+            await saveKey(wallet.entropy, pwInput.value);
+            // Clear sensitive inputs immediately after use
+            mnemonicInput.value = '';
+            pwInput.value = '';
+            confirmInput.value = '';
             navigate('#dashboard');
         } catch (e) {
-            errorEl.textContent = 'Invalid recovery words: ' + e.message;
+            // Clear password fields on error (keep mnemonic for retry)
+            pwInput.value = '';
+            confirmInput.value = '';
+            console.error('Import failed:', e);
+            errorEl.textContent = 'Invalid recovery words. Please check and try again.';
             errorEl.style.display = '';
             btn.disabled = false;
             btn.textContent = 'Import Wallet';

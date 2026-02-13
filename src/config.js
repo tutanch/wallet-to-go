@@ -32,14 +32,21 @@ export const NETWORKS = {
     },
 };
 
+const VALID_NETWORKS = Object.keys(NETWORKS);
+
 export const DEFAULT_DERIVATION_PATH = "m/44'/242'/0'/0'";
-export const LUNAS_PER_NIM = 1e5;
+export const LUNAS_PER_NIM = 100000;
 
 export function getSelectedNetwork() {
-    return localStorage.getItem('nimiq-network') || 'main';
+    const stored = localStorage.getItem('nimiq-network');
+    if (stored && VALID_NETWORKS.includes(stored)) return stored;
+    return 'main';
 }
 
 export function setSelectedNetwork(network) {
+    if (!VALID_NETWORKS.includes(network)) {
+        throw new Error(`Invalid network: ${network}`);
+    }
     localStorage.setItem('nimiq-network', network);
 }
 
@@ -51,8 +58,20 @@ export function lunaToNim(luna) {
     return luna / LUNAS_PER_NIM;
 }
 
+// Parse NIM string to luna using integer math to avoid floating-point errors
 export function nimToLuna(nim) {
-    return Math.round(nim * LUNAS_PER_NIM);
+    const str = String(nim);
+    const isNegative = str.startsWith('-');
+    const abs = isNegative ? str.slice(1) : str;
+    const parts = abs.split('.');
+    const whole = parseInt(parts[0] || '0', 10) * LUNAS_PER_NIM;
+    let result = whole;
+    if (parts[1]) {
+        // Pad or truncate fractional part to 5 digits (luna precision)
+        const frac = parts[1].padEnd(5, '0').substring(0, 5);
+        result += parseInt(frac, 10);
+    }
+    return isNegative ? -result : result;
 }
 
 export function formatNim(luna) {

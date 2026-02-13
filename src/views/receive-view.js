@@ -33,14 +33,22 @@ export async function receiveView() {
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 
     el.querySelector('#btn-copy').addEventListener('click', async () => {
-        await navigator.clipboard.writeText(address);
-        const btn = el.querySelector('#btn-copy');
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = 'Copy Address'; }, 1500);
+        try {
+            await navigator.clipboard.writeText(address);
+            const btn = el.querySelector('#btn-copy');
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy Address'; }, 1500);
+        } catch {
+            // Clipboard API may fail without HTTPS or permissions
+        }
     });
 
     el.querySelector('#address-copy').addEventListener('click', async () => {
-        await navigator.clipboard.writeText(address);
+        try {
+            await navigator.clipboard.writeText(address);
+        } catch {
+            // Clipboard API may fail without HTTPS or permissions
+        }
     });
 
     // Generate real QR code using qr-creator

@@ -46,6 +46,14 @@ export function settingsView() {
                     <h2 class="nq-label">Danger Zone</h2>
                     <button class="nq-button-s red" id="btn-logout">Logout & Delete Wallet</button>
                     <p class="nq-text danger-text">This will remove your wallet from this device. Make sure you have your recovery words backed up!</p>
+                    <div id="logout-section" style="display: none;">
+                        <div class="form-group">
+                            <input type="password" class="nq-input" id="logout-password" placeholder="Enter password to confirm" autocomplete="current-password">
+                        </div>
+                        <button class="nq-button-s red" id="btn-confirm-logout">Confirm Delete</button>
+                        <button class="nq-button-s" id="btn-cancel-logout">Cancel</button>
+                        <p class="nq-text error-text" id="logout-error" style="display: none;"></p>
+                    </div>
                 </div>
             </div>
             <div class="nq-card-footer">
@@ -78,48 +86,101 @@ export function settingsView() {
     });
 
     el.querySelector('#btn-reveal').addEventListener('click', async () => {
-        const password = el.querySelector('#export-password').value;
+        const pwInput = el.querySelector('#export-password');
         const errorEl = el.querySelector('#export-error');
         errorEl.style.display = 'none';
 
-        if (!password) {
+        if (!pwInput.value) {
             errorEl.textContent = 'Please enter your password.';
             errorEl.style.display = '';
             return;
         }
 
         try {
-            const entropy = await getKey(password);
+            const entropy = await getKey(pwInput.value);
+            // Clear password immediately after use
+            pwInput.value = '';
+
             if (!entropy) throw new Error('Wrong password');
 
             const mnemonic = await getMnemonic(entropy);
             const words = Array.isArray(mnemonic) ? mnemonic : mnemonic.split(' ');
             const display = el.querySelector('#mnemonic-display');
-            display.innerHTML = words.map((word, i) => `
-                <div class="mnemonic-word">
-                    <span class="word-number">${i + 1}</span>
-                    <span class="word-text">${word}</span>
-                </div>
-            `).join('');
+            display.innerHTML = '';
+            words.forEach((word, i) => {
+                const div = document.createElement('div');
+                div.className = 'mnemonic-word';
+                const numSpan = document.createElement('span');
+                numSpan.className = 'word-number';
+                numSpan.textContent = i + 1;
+                const textSpan = document.createElement('span');
+                textSpan.className = 'word-text';
+                textSpan.textContent = word;
+                div.appendChild(numSpan);
+                div.appendChild(textSpan);
+                display.appendChild(div);
+            });
             display.style.display = '';
             el.querySelector('#btn-reveal').style.display = 'none';
-            el.querySelector('#export-password').style.display = 'none';
+            pwInput.style.display = 'none';
+
+            // Auto-hide mnemonic after 60 seconds
+            setTimeout(() => {
+                display.innerHTML = '';
+                display.style.display = 'none';
+                el.querySelector('#btn-reveal').style.display = '';
+                pwInput.style.display = '';
+            }, 60000);
         } catch (e) {
+            pwInput.value = '';
             errorEl.textContent = 'Wrong password.';
             errorEl.style.display = '';
         }
     });
 
-    // Logout
-    el.querySelector('#btn-logout').addEventListener('click', async () => {
-        const confirmed = window.confirm(
-            'Are you sure you want to delete your wallet from this device? This cannot be undone. Make sure you have your recovery words!'
-        );
-        if (!confirmed) return;
+    // Logout — requires password confirmation
+    el.querySelector('#btn-logout').addEventListener('click', () => {
+        el.querySelector('#logout-section').style.display = '';
+        el.querySelector('#btn-logout').style.display = 'none';
+        el.querySelector('#logout-password').focus();
+    });
 
-        await disconnect();
-        await removeAll();
-        navigate('#welcome');
+    el.querySelector('#btn-cancel-logout').addEventListener('click', () => {
+        el.querySelector('#logout-section').style.display = 'none';
+        el.querySelector('#btn-logout').style.display = '';
+        el.querySelector('#logout-password').value = '';
+        el.querySelector('#logout-error').style.display = 'none';
+    });
+
+    el.querySelector('#btn-confirm-logout').addEventListener('click', async () => {
+        const pwInput = el.querySelector('#logout-password');
+        const errorEl = el.querySelector('#logout-error');
+        errorEl.style.display = 'none';
+
+        if (!pwInput.value) {
+            errorEl.textContent = 'Please enter your password.';
+            errorEl.style.display = '';
+            return;
+        }
+
+        try {
+            const entropy = await getKey(pwInput.value);
+            pwInput.value = '';
+
+            if (!entropy) {
+                errorEl.textContent = 'Wrong password.';
+                errorEl.style.display = '';
+                return;
+            }
+
+            await disconnect();
+            await removeAll();
+            navigate('#welcome');
+        } catch (e) {
+            pwInput.value = '';
+            errorEl.textContent = 'Wrong password.';
+            errorEl.style.display = '';
+        }
     });
 
     return el;
