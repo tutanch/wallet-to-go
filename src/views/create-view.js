@@ -1,6 +1,5 @@
 import { navigate } from '../router.js';
-import { createWallet } from '../modules/wallet-manager.js';
-import { saveKey } from '../modules/key-store.js';
+import { createWallet, saveWallet } from '../modules/keyguard-api.js';
 
 function renderMnemonicWords(container, words) {
     words.forEach((word, i) => {
@@ -24,7 +23,6 @@ export async function createView() {
     el.className = 'view-container';
 
     function renderStep1() {
-        const words = Array.isArray(wallet.mnemonic) ? wallet.mnemonic : wallet.mnemonic.split(' ');
         el.innerHTML = `
             <div class="nq-card">
                 <div class="nq-card-header">
@@ -41,7 +39,7 @@ export async function createView() {
             </div>
         `;
 
-        renderMnemonicWords(el.querySelector('#mnemonic-grid'), words);
+        renderMnemonicWords(el.querySelector('#mnemonic-grid'), wallet.mnemonic);
 
         el.querySelector('#btn-back').addEventListener('click', () => navigate('#welcome'));
         el.querySelector('#btn-next').addEventListener('click', () => {
@@ -103,17 +101,10 @@ export async function createView() {
             btn.textContent = 'Saving...';
 
             try {
-                await saveKey(wallet.entropy, pwInput.value);
+                await saveWallet(pwInput.value);
                 // Clear password fields immediately after use
                 pwInput.value = '';
                 confirmInput.value = '';
-                // Zero out sensitive data from closure
-                if (wallet.entropy && wallet.entropy.serialize) {
-                    const bytes = wallet.entropy.serialize();
-                    if (bytes instanceof Uint8Array) bytes.fill(0);
-                }
-                wallet.entropy = null;
-                wallet.mnemonic = null;
                 navigate('#dashboard');
             } catch (e) {
                 // Clear password fields on error too

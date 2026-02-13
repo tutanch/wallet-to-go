@@ -1,8 +1,7 @@
 import { navigate } from '../router.js';
-import { getStoredAddress, getKey } from '../modules/key-store.js';
+import { getStoredAddress, signTransaction } from '../modules/keyguard-api.js';
 import * as network from '../modules/network-client.js';
-import { buildAndSign } from '../modules/transaction-builder.js';
-import { nimToLuna, formatNim, LUNAS_PER_NIM } from '../config.js';
+import { nimToLuna, getNetworkConfig } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
 
 export async function sendView() {
@@ -128,16 +127,6 @@ export async function sendView() {
         sending = true;
 
         try {
-            const entropy = await getKey(pwInput.value);
-            // Clear password immediately after decryption
-            pwInput.value = '';
-
-            if (!entropy) {
-                throw new Error('Wrong password or no wallet found.');
-            }
-
-            btn.textContent = 'Sending...';
-
             const recipientValue = el.querySelector('#recipient').value.trim();
             const amountValue = el.querySelector('#amount').value;
             const feeValue = parseInt(el.querySelector('#fee').value) || 0;
@@ -147,18 +136,33 @@ export async function sendView() {
             const validityStartHeight = await network.getHeadHeight();
             const networkId = await network.getNetworkId();
 
-            const tx = await buildAndSign({
+            // Validate networkId matches expected config
+            const expectedConfig = getNetworkConfig();
+            if (networkId !== expectedConfig.id) {
+                throw new Error('Network ID mismatch');
+            }
+
+            btn.textContent = 'Signing...';
+
+            // Sign in the keyguard worker — key never reaches main thread
+            const { serializedTx } = await signTransaction({
                 senderAddress: address,
                 recipientAddress: recipientValue,
                 value: valueLuna,
                 fee: feeValue,
-                entropy,
                 message: messageValue,
                 validityStartHeight,
                 networkId,
+                password: pwInput.value,
             });
 
-            const result = await network.sendTransaction(tx);
+            // Clear password immediately after sending to worker
+            pwInput.value = '';
+
+            btn.textContent = 'Sending...';
+
+            // Send the serialized transaction via the network
+            const result = await network.sendSerializedTransaction(serializedTx);
 
             successEl.style.display = '';
             el.querySelector('#tx-hash').textContent = `TX: ${result.transactionHash.substring(0, 16)}...`;
@@ -169,7 +173,7 @@ export async function sendView() {
             pwInput.value = '';
             console.error('Transaction failed:', e);
             const msg = e.message || '';
-            if (msg.includes('Wrong password') || msg.includes('no wallet')) {
+            if (msg.includes('Wrong password') || msg.includes('No wallet')) {
                 errorEl.textContent = 'Wrong password or no wallet found.';
             } else if (msg.includes('Network ID mismatch')) {
                 errorEl.textContent = 'Network mismatch. Please check your network setting.';

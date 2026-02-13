@@ -1,6 +1,6 @@
 import { loadNimiq } from './nimiq.js';
 import { registerRoute, initRouter, navigate } from './router.js';
-import { hasKey } from './modules/key-store.js';
+import { hasKey } from './modules/keyguard-api.js';
 import { welcomeView } from './views/welcome-view.js';
 import { createView } from './views/create-view.js';
 import { importView } from './views/import-view.js';

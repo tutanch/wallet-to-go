@@ -1,4 +1,4 @@
-import { hasKey } from './modules/key-store.js';
+import { hasKey } from './modules/keyguard-api.js';
 
 const routes = {};
 let currentCleanup = null;

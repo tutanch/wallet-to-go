@@ -91,6 +91,12 @@ export async function sendTransaction(tx) {
     return client.sendTransaction(tx);
 }
 
+export async function sendSerializedTransaction(bytes) {
+    const Nimiq = await loadNimiq();
+    const tx = Nimiq.Transaction.deserialize(bytes);
+    return sendTransaction(tx);
+}
+
 export async function getHeadHeight() {
     const client = await getClient();
     await waitForConsensus();

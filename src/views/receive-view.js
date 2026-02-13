@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { getStoredAddress } from '../modules/key-store.js';
+import { getStoredAddress } from '../modules/keyguard-api.js';
 
 export async function receiveView() {
     const address = await getStoredAddress();

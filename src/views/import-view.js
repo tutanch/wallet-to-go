@@ -1,6 +1,5 @@
 import { navigate } from '../router.js';
-import { importFromMnemonic } from '../modules/wallet-manager.js';
-import { saveKey } from '../modules/key-store.js';
+import { importWallet } from '../modules/keyguard-api.js';
 
 export function importView() {
     const el = document.createElement('div');
@@ -67,8 +66,7 @@ export function importView() {
         btn.textContent = 'Importing...';
 
         try {
-            const wallet = await importFromMnemonic(words);
-            await saveKey(wallet.entropy, pwInput.value);
+            await importWallet(words, pwInput.value);
             // Clear sensitive inputs immediately after use
             mnemonicInput.value = '';
             pwInput.value = '';

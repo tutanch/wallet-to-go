@@ -1,6 +1,5 @@
 import { navigate } from '../router.js';
-import { getKey, removeAll } from '../modules/key-store.js';
-import { getMnemonic } from '../modules/wallet-manager.js';
+import { exportMnemonic, verifyPassword, deleteWallet } from '../modules/keyguard-api.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 
@@ -97,14 +96,10 @@ export function settingsView() {
         }
 
         try {
-            const entropy = await getKey(pwInput.value);
+            const { words } = await exportMnemonic(pwInput.value);
             // Clear password immediately after use
             pwInput.value = '';
 
-            if (!entropy) throw new Error('Wrong password');
-
-            const mnemonic = await getMnemonic(entropy);
-            const words = Array.isArray(mnemonic) ? mnemonic : mnemonic.split(' ');
             const display = el.querySelector('#mnemonic-display');
             display.innerHTML = '';
             words.forEach((word, i) => {
@@ -164,17 +159,17 @@ export function settingsView() {
         }
 
         try {
-            const entropy = await getKey(pwInput.value);
+            const valid = await verifyPassword(pwInput.value);
             pwInput.value = '';
 
-            if (!entropy) {
+            if (!valid) {
                 errorEl.textContent = 'Wrong password.';
                 errorEl.style.display = '';
                 return;
             }
 
             await disconnect();
-            await removeAll();
+            await deleteWallet();
             navigate('#welcome');
         } catch (e) {
             pwInput.value = '';
