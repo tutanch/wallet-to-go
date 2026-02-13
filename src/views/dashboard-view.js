@@ -94,14 +94,8 @@ export async function dashboardView() {
     // Start network connection
     await network.connect();
 
-    // Fetch full data (balance + history) — called sparingly to avoid rate limits
-    let lastFullFetch = 0;
-    const MIN_FETCH_INTERVAL = 30000; // 30 seconds minimum between history fetches
-
+    // Fetch balance + history + initial head height on consensus established
     async function fetchFullData() {
-        const now = Date.now();
-        if (now - lastFullFetch < MIN_FETCH_INTERVAL) return;
-        lastFullFetch = now;
         try {
             balance = await network.getBalance(address);
             recentTxs = await network.getHistory(address, 10);
@@ -119,33 +113,19 @@ export async function dashboardView() {
         render();
     });
 
-    // Trailing-edge debounce for head changes — always processes the latest
-    // event after a cooldown, so the display never goes stale.
-    let headDebounceTimer = null;
-    let headUpdatePending = false;
-    const HEAD_DEBOUNCE_MS = 3000;
-
-    async function processHeadUpdate() {
-        headUpdatePending = false;
+    // Head changes update block height directly from the event —
+    // no network call needed. Balance is NOT refetched here, as it
+    // only changes on transactions (matching the Nimiq Wallet pattern).
+    const removeHead = network.onHeadChanged(async (hash) => {
         try {
-            headHeight = await network.getHeadHeight();
-            if (await network.isConsensusEstablished()) {
-                balance = await network.getBalance(address);
-                consensus = 'established';
+            const block = await network.getBlock(hash);
+            if (block) {
+                headHeight = block.height;
+                render();
             }
         } catch (e) {
-            console.error('Failed to update:', e);
+            console.error('Failed to get block:', e);
         }
-        render();
-    }
-
-    const removeHead = network.onHeadChanged(() => {
-        headUpdatePending = true;
-        if (headDebounceTimer) clearTimeout(headDebounceTimer);
-        headDebounceTimer = setTimeout(() => {
-            headDebounceTimer = null;
-            if (headUpdatePending) processHeadUpdate();
-        }, HEAD_DEBOUNCE_MS);
     });
 
     // Transaction listener handles new txs in real-time without polling.
@@ -170,7 +150,6 @@ export async function dashboardView() {
             cleaned = true;
             removeConsensus();
             removeHead();
-            if (headDebounceTimer) clearTimeout(headDebounceTimer);
             if (typeof removeTxListener === 'function') removeTxListener();
         },
     };

@@ -97,6 +97,11 @@ export async function getHeadHeight() {
     return client.getHeadHeight();
 }
 
+export async function getBlock(hash) {
+    const client = await getClient();
+    return client.getBlock(hash);
+}
+
 export async function getNetworkId() {
     const client = await getClient();
     await waitForConsensus();
