@@ -119,24 +119,33 @@ export async function dashboardView() {
         render();
     });
 
-    // Debounce head changes — only update balance (cheap) and block height,
-    // skip getHistory (expensive, causes rate limit) on every block
+    // Trailing-edge debounce for head changes — always processes the latest
+    // event after a cooldown, so the display never goes stale.
     let headDebounceTimer = null;
-    const removeHead = network.onHeadChanged(async () => {
-        if (headDebounceTimer) return; // Skip if already scheduled
-        headDebounceTimer = setTimeout(async () => {
-            headDebounceTimer = null;
-            try {
-                headHeight = await network.getHeadHeight();
-                if (await network.isConsensusEstablished()) {
-                    balance = await network.getBalance(address);
-                    consensus = 'established';
-                }
-            } catch (e) {
-                console.error('Failed to update:', e);
+    let headUpdatePending = false;
+    const HEAD_DEBOUNCE_MS = 3000;
+
+    async function processHeadUpdate() {
+        headUpdatePending = false;
+        try {
+            headHeight = await network.getHeadHeight();
+            if (await network.isConsensusEstablished()) {
+                balance = await network.getBalance(address);
+                consensus = 'established';
             }
-            render();
-        }, 10000); // Update at most every 10 seconds
+        } catch (e) {
+            console.error('Failed to update:', e);
+        }
+        render();
+    }
+
+    const removeHead = network.onHeadChanged(() => {
+        headUpdatePending = true;
+        if (headDebounceTimer) clearTimeout(headDebounceTimer);
+        headDebounceTimer = setTimeout(() => {
+            headDebounceTimer = null;
+            if (headUpdatePending) processHeadUpdate();
+        }, HEAD_DEBOUNCE_MS);
     });
 
     // Transaction listener handles new txs in real-time without polling.
