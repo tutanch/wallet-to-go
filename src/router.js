@@ -2,6 +2,7 @@ import { hasKey } from './modules/key-store.js';
 
 const routes = {};
 let currentCleanup = null;
+let navigationId = 0;
 
 const PUBLIC_ROUTES = new Set(['#welcome', '#create', '#import']);
 
@@ -18,6 +19,7 @@ export function getCurrentRoute() {
 }
 
 async function handleHashChange() {
+    const thisNavId = ++navigationId;
     const hash = getCurrentRoute();
     const $app = document.getElementById('app');
 
@@ -30,6 +32,9 @@ async function handleHashChange() {
         }
     }
 
+    // If another navigation started while we were checking, abort this one
+    if (thisNavId !== navigationId) return;
+
     if (currentCleanup) {
         currentCleanup();
         currentCleanup = null;
@@ -40,6 +45,8 @@ async function handleHashChange() {
     const factory = routes[hash];
     if (factory) {
         const result = await factory();
+        // If another navigation started while the view was loading, discard this result
+        if (thisNavId !== navigationId) return;
         if (result instanceof HTMLElement) {
             $app.appendChild(result);
         } else if (result && result.element) {
