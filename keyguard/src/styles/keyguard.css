@@ -316,3 +316,30 @@ textarea.nq-input {
     text-align: right;
     word-break: break-all;
 }
+
+/* ---- WebAuthn / Biometric unlock ---- */
+.webauthn-icon {
+    text-align: center;
+    padding: 16px 0;
+    color: var(--nq-light-blue);
+}
+
+.webauthn-icon svg {
+    width: 64px;
+    height: 64px;
+}
+
+.unlock-choice-body {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.unlock-choice-btn {
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+.unlock-choice-btn:last-of-type {
+    margin-bottom: 0;
+}

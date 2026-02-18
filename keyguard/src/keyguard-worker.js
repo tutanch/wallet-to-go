@@ -99,6 +99,25 @@ async function ensureWasm() {
 // Between createWallet() and saveWallet(), entropy lives only here.
 let pendingEntropy = null;
 
+// ── WebAuthn AES-GCM helpers ──────────────────────────────────────
+
+async function decryptWithPrfKey(record, prfKey) {
+    if (!record.webauthn) throw new Error('No WebAuthn credential found');
+    const { encryptedSecret, iv } = record.webauthn;
+    const aesKey = await crypto.subtle.importKey(
+        'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['decrypt'],
+    );
+    let entropyBytes;
+    try {
+        entropyBytes = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv }, aesKey, encryptedSecret,
+        );
+    } catch (_) {
+        throw new Error('WebAuthn decryption failed');
+    }
+    return new Entropy(new Uint8Array(entropyBytes));
+}
+
 // ── Command handlers ───────────────────────────────────────────────
 
 const handlers = {
@@ -188,19 +207,23 @@ const handlers = {
         return { address: userAddress };
     },
 
-    async signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, password }) {
+    async signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, password, prfKey }) {
         await ensureWasm();
 
         // Decrypt key
         const record = await getRecord();
         if (!record) throw new Error('No wallet found');
 
-        const passwordBuf = new TextEncoder().encode(password);
         let entropy;
-        try {
-            entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
-        } catch (_) {
-            throw new Error('Wrong password');
+        if (prfKey) {
+            entropy = await decryptWithPrfKey(record, prfKey);
+        } else {
+            const passwordBuf = new TextEncoder().encode(password);
+            try {
+                entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+            } catch (_) {
+                throw new Error('Wrong password');
+            }
         }
 
         // Validate message
@@ -238,17 +261,21 @@ const handlers = {
         return { serializedTx };
     },
 
-    async exportMnemonic({ password }) {
+    async exportMnemonic({ password, prfKey }) {
         await ensureWasm();
         const record = await getRecord();
         if (!record) throw new Error('No wallet found');
 
-        const passwordBuf = new TextEncoder().encode(password);
         let entropy;
-        try {
-            entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
-        } catch (_) {
-            throw new Error('Wrong password');
+        if (prfKey) {
+            entropy = await decryptWithPrfKey(record, prfKey);
+        } else {
+            const passwordBuf = new TextEncoder().encode(password);
+            try {
+                entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+            } catch (_) {
+                throw new Error('Wrong password');
+            }
         }
 
         const mnemonic = MnemonicUtils.entropyToMnemonic(entropy);
@@ -288,6 +315,75 @@ const handlers = {
             request.onsuccess = () => resolve(true);
             request.onerror = () => reject(request.error);
         });
+    },
+
+    // ── WebAuthn handlers ─────────────────────────────────────────
+
+    async saveWebAuthnSecret({ password, prfKey, credentialId, prfSalt }) {
+        await ensureWasm();
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+
+        // Decrypt entropy using password
+        const passwordBuf = new TextEncoder().encode(password);
+        let entropy;
+        try {
+            entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+        } catch (_) {
+            throw new Error('Wrong password');
+        }
+
+        // Encrypt entropy with PRF-derived key using AES-256-GCM
+        const entropyBytes = entropy.serialize();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const aesKey = await crypto.subtle.importKey(
+            'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
+        );
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv }, aesKey, entropyBytes,
+        );
+
+        // Update record with WebAuthn data
+        record.webauthn = {
+            credentialId: new Uint8Array(credentialId),
+            prfSalt: new Uint8Array(prfSalt),
+            encryptedSecret: new Uint8Array(ciphertext),
+            iv,
+        };
+
+        const db = await connectDB();
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const request = tx.objectStore(STORE_NAME).put(record);
+        await txPromise(request, tx);
+
+        // Zero entropy
+        try {
+            const bytes = entropy.serialize();
+            if (bytes instanceof Uint8Array) bytes.fill(0);
+        } catch (_) { /* best effort */ }
+
+        return { success: true };
+    },
+
+    async getWebAuthnInfo() {
+        const record = await getRecord();
+        if (!record || !record.webauthn) return { hasWebAuthn: false };
+        return {
+            hasWebAuthn: true,
+            credentialId: record.webauthn.credentialId,
+            prfSalt: record.webauthn.prfSalt,
+        };
+    },
+
+    async removeWebAuthn() {
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+        delete record.webauthn;
+        const db = await connectDB();
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const request = tx.objectStore(STORE_NAME).put(record);
+        await txPromise(request, tx);
+        return { success: true };
     },
 };
 

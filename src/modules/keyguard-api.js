@@ -158,3 +158,24 @@ export function exportMnemonic() {
 export function deleteWallet() {
     return call('deleteWallet');
 }
+
+/** Check if WebAuthn is configured. Transparent passthrough — no UI shown. */
+export function getWebAuthnInfo() {
+    return call('getWebAuthnInfo');
+}
+
+/**
+ * Register WebAuthn credential. Keyguard shows password entry + biometric registration.
+ * Returns { success: true }.
+ */
+export function registerWebAuthn() {
+    return call('registerWebAuthn');
+}
+
+/**
+ * Remove WebAuthn credential. Keyguard shows password confirmation.
+ * Returns { success: true }.
+ */
+export function removeWebAuthn() {
+    return call('removeWebAuthn');
+}

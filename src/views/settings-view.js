@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { exportMnemonic, deleteWallet } from '../modules/keyguard-api.js';
+import { exportMnemonic, deleteWallet, getWebAuthnInfo, registerWebAuthn, removeWebAuthn } from '../modules/keyguard-api.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 
@@ -26,6 +26,13 @@ export function settingsView() {
                             <a class="nq-link" href="${NETWORKS.test.faucetUrl}" target="_blank" rel="noopener">Get test NIM from faucet</a>
                         </p>
                     ` : ''}
+                </div>
+
+                <div class="settings-section" id="security-section">
+                    <h2 class="nq-label">Security</h2>
+                    <p class="nq-text" style="margin-bottom: 12px;" id="webauthn-status">Checking biometric support...</p>
+                    <button class="nq-button-s" id="btn-webauthn" style="display: none;"></button>
+                    <p class="nq-text error-text" id="webauthn-error" style="display: none; margin-top: 8px;"></p>
                 </div>
 
                 <div class="settings-section">
@@ -107,6 +114,63 @@ export function settingsView() {
             }
             btn.disabled = false;
             btn.textContent = 'Logout & Delete Wallet';
+        }
+    });
+
+    // WebAuthn / biometric toggle
+    const webauthnBtn = el.querySelector('#btn-webauthn');
+    const webauthnStatus = el.querySelector('#webauthn-status');
+    const webauthnError = el.querySelector('#webauthn-error');
+    const securitySection = el.querySelector('#security-section');
+
+    async function updateWebAuthnUI() {
+        // Check if WebAuthn is available in this browser
+        if (!window.PublicKeyCredential || !navigator.credentials) {
+            securitySection.style.display = 'none';
+            return;
+        }
+
+        try {
+            const info = await getWebAuthnInfo();
+            if (info.hasWebAuthn) {
+                webauthnStatus.textContent = 'Biometric unlock is enabled.';
+                webauthnBtn.textContent = 'Disable Biometric Unlock';
+                webauthnBtn.style.display = '';
+            } else {
+                webauthnStatus.textContent = 'Use your fingerprint, face, or device PIN instead of typing your password.';
+                webauthnBtn.textContent = 'Enable Biometric Unlock';
+                webauthnBtn.style.display = '';
+            }
+        } catch (_) {
+            securitySection.style.display = 'none';
+        }
+    }
+
+    updateWebAuthnUI();
+
+    webauthnBtn.addEventListener('click', async () => {
+        webauthnBtn.disabled = true;
+        webauthnError.style.display = 'none';
+        const wasEnabled = webauthnBtn.textContent.startsWith('Disable');
+        webauthnBtn.textContent = 'Opening keyguard...';
+
+        try {
+            if (wasEnabled) {
+                await removeWebAuthn();
+            } else {
+                await registerWebAuthn();
+            }
+            await updateWebAuthnUI();
+        } catch (e) {
+            if (e.message !== 'User cancelled') {
+                webauthnError.textContent = wasEnabled
+                    ? 'Could not disable biometric unlock. Please try again.'
+                    : 'Could not enable biometric unlock. Please try again.';
+                webauthnError.style.display = '';
+            }
+        } finally {
+            webauthnBtn.disabled = false;
+            await updateWebAuthnUI();
         }
     });
 

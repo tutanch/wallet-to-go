@@ -253,6 +253,193 @@ function renderDeleteConfirm() {
         </div>`;
 }
 
+// ── WebAuthn helpers ──────────────────────────────────────────────────────
+
+const WEBAUTHN_RP = { name: 'Nimiq Wallet' };
+
+function isWebAuthnAvailable() {
+    return !!(window.PublicKeyCredential && navigator.credentials);
+}
+
+async function isPrfSupported() {
+    if (!isWebAuthnAvailable()) return false;
+    if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
+        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!available) return false;
+    }
+    return true;
+}
+
+function generatePrfSalt() {
+    return crypto.getRandomValues(new Uint8Array(32));
+}
+
+async function createWebAuthnCredential(userId, userName, prfSalt) {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+    const credential = await navigator.credentials.create({
+        publicKey: {
+            rp: WEBAUTHN_RP,
+            user: {
+                id: userId,
+                name: userName,
+                displayName: 'Nimiq Wallet',
+            },
+            challenge,
+            pubKeyCredParams: [
+                { alg: -7, type: 'public-key' },   // ES256
+                { alg: -257, type: 'public-key' },  // RS256
+            ],
+            authenticatorSelection: {
+                authenticatorAttachment: 'platform',
+                userVerification: 'required',
+                residentKey: 'preferred',
+            },
+            extensions: {
+                prf: { eval: { first: prfSalt } },
+            },
+        },
+    });
+
+    const extResults = credential.getClientExtensionResults();
+    if (!extResults.prf?.enabled) {
+        throw new Error('PRF_NOT_SUPPORTED');
+    }
+
+    let prfOutput = extResults.prf?.results?.first;
+    if (!prfOutput) {
+        // Some authenticators only return PRF output on get(), not create()
+        prfOutput = await getWebAuthnPrfKey(new Uint8Array(credential.rawId), prfSalt);
+    }
+
+    return {
+        credentialId: new Uint8Array(credential.rawId),
+        prfKey: new Uint8Array(prfOutput),
+    };
+}
+
+async function getWebAuthnPrfKey(credentialId, prfSalt) {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+    const assertion = await navigator.credentials.get({
+        publicKey: {
+            challenge,
+            allowCredentials: [{
+                type: 'public-key',
+                id: credentialId,
+            }],
+            userVerification: 'required',
+            extensions: {
+                prf: { eval: { first: prfSalt } },
+            },
+        },
+    });
+
+    const extResults = assertion.getClientExtensionResults();
+    const prfResult = extResults.prf?.results?.first;
+    if (!prfResult) throw new Error('PRF output not available');
+    return new Uint8Array(prfResult);
+}
+
+// ── WebAuthn UI templates ─────────────────────────────────────────────────
+
+function renderWebAuthnPrompt() {
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Enable Biometric Unlock</h1>
+                    <p>Use your fingerprint, face, or device PIN for quick access instead of typing your password.</p>
+                </div>
+                <div class="keyguard-body">
+                    <div class="webauthn-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 11c0-1.1.9-2 2-2s2 .9 2 2c0 1.5-1.2 2.7-2 3.5"/>
+                            <path d="M12 11c0-2.2 1.8-4 4-4s4 1.8 4 4c0 2.5-2 5-4 6.5"/>
+                            <path d="M12 11c0-3.3 2.7-6 6-6s6 2.7 6 6c0 4-3 7.5-6 9.5"/>
+                            <path d="M2 11c0-5.5 4.5-10 10-10s10 4.5 10 10"/>
+                            <path d="M2 11c0 4.5 3.5 8.5 7 10.5"/>
+                            <path d="M7 11c0-2.8 2.2-5 5-5"/>
+                            <path d="M7 11c0 3 1.5 5.5 4 7.5"/>
+                        </svg>
+                    </div>
+                    <p class="error-text" id="error" style="display:none;"></p>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-skip" type="button" class="btn-secondary">Skip</button>
+                    <button id="btn-enable" type="button" class="btn-primary">Enable</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderUnlockChoice(title, subtitle) {
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>${escHtml(title)}</h1>
+                    ${subtitle ? `<p>${escHtml(subtitle)}</p>` : ''}
+                </div>
+                <div class="keyguard-body unlock-choice-body">
+                    <button id="btn-biometric" type="button" class="btn-primary unlock-choice-btn">
+                        Use Biometric / Passkey
+                    </button>
+                    <button id="btn-password" type="button" class="btn-secondary unlock-choice-btn">
+                        Use Password
+                    </button>
+                    <p class="error-text" id="error" style="display:none;"></p>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+// ── WebAuthn registration flow ────────────────────────────────────────────
+
+async function offerWebAuthnRegistration(password, addressString) {
+    return new Promise((resolve) => {
+        setUI(renderWebAuthnPrompt());
+
+        ui.querySelector('#btn-skip').onclick = () => resolve();
+
+        ui.querySelector('#btn-enable').onclick = async () => {
+            const btn = ui.querySelector('#btn-enable');
+            const errorEl = ui.querySelector('#error');
+            setButtonState(btn, 'Registering...', true);
+
+            try {
+                const prfSalt = generatePrfSalt();
+                const userId = new TextEncoder().encode(addressString.substring(0, 32));
+                const { credentialId, prfKey } = await createWebAuthnCredential(
+                    userId, addressString, prfSalt,
+                );
+
+                await callWorker('saveWebAuthnSecret', {
+                    password,
+                    prfKey: Array.from(prfKey),
+                    credentialId: Array.from(credentialId),
+                    prfSalt: Array.from(prfSalt),
+                });
+
+                prfKey.fill(0);
+                resolve();
+            } catch (err) {
+                if (err.message === 'PRF_NOT_SUPPORTED') {
+                    showError(errorEl, 'Your device does not support this feature.');
+                } else if (err.name === 'NotAllowedError') {
+                    showError(errorEl, 'Registration was cancelled or timed out.');
+                } else {
+                    showError(errorEl, 'Could not set up biometric unlock.');
+                }
+                setButtonState(btn, 'Try Again', false);
+            }
+        };
+    });
+}
+
 // ── UI flows ──────────────────────────────────────────────────────────────
 
 const ui = document.getElementById('keyguard-ui');
@@ -307,6 +494,12 @@ async function flowCreateWallet() {
                 await callWorker('saveWallet', { password: pw });
                 ui.querySelector('#password').value = '';
                 ui.querySelector('#password-confirm').value = '';
+
+                // Offer WebAuthn registration if supported
+                if (await isPrfSupported()) {
+                    await offerWebAuthnRegistration(pw, walletData.address);
+                }
+
                 resolveSession({ address: walletData.address });
             } catch (err) {
                 ui.querySelector('#password').value = '';
@@ -362,6 +555,12 @@ async function flowImportWallet() {
                 ui.querySelector('#password').value = '';
                 ui.querySelector('#password-confirm').value = '';
                 wordsCopy.fill('');
+
+                // Offer WebAuthn registration if supported
+                if (await isPrfSupported()) {
+                    await offerWebAuthnRegistration(pw, result.address);
+                }
+
                 resolveSession({ address: result.address });
             } catch (err) {
                 ui.querySelector('#password').value = '';
@@ -371,6 +570,37 @@ async function flowImportWallet() {
                 showError(ui.querySelector('#error'), 'Invalid recovery words or wrong password.');
             }
         });
+    });
+}
+
+function showPasswordFormForSign(args, formattedAmount, truncatedRecipient) {
+    setUI(renderPasswordForm({
+        title: 'Enter Password to Sign',
+        subtitle: `Sending ${formattedAmount} to ${truncatedRecipient}`,
+        isNew: false,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Signing...', true);
+        try {
+            const { serializedTx } = await callWorker('signTransaction', { ...args, password: pw });
+            ui.querySelector('#password').value = '';
+            resolveSession({ serializedTx }, [serializedTx.buffer]);
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            const msg = err.message?.includes('Wrong password')
+                ? 'Wrong password.'
+                : 'Signing failed. Please try again.';
+            showError(ui.querySelector('#error'), msg);
+        }
     });
 }
 
@@ -389,46 +619,93 @@ async function flowSignTransaction(args) {
     }));
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-confirm').onclick = () => {
+    ui.querySelector('#btn-confirm').onclick = async () => {
         setUI('');
 
-        // Step 2: Password entry
-        setUI(renderPasswordForm({
-            title: 'Enter Password to Sign',
-            subtitle: `Sending ${formattedAmount} to ${truncatedRecipient}`,
-            isNew: false,
-        }));
+        // Check if WebAuthn is configured
+        const info = await callWorker('getWebAuthnInfo');
 
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-        ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const pw = ui.querySelector('#password').value;
-            const errorEl = ui.querySelector('#error');
-            if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+        if (info.hasWebAuthn) {
+            // Step 2a: Offer biometric or password choice
+            setUI(renderUnlockChoice(
+                'Authenticate to Sign',
+                `Sending ${formattedAmount} to ${truncatedRecipient}`,
+            ));
 
-            const btn = ui.querySelector('#btn-submit');
-            setButtonState(btn, 'Signing...', true);
-            try {
-                const { serializedTx } = await callWorker('signTransaction', { ...args, password: pw });
-                ui.querySelector('#password').value = '';
-                // Transfer the buffer zero-copy back to the wallet
-                resolveSession({ serializedTx }, [serializedTx.buffer]);
-            } catch (err) {
-                ui.querySelector('#password').value = '';
-                setButtonState(btn, 'Continue', false);
-                const msg = err.message?.includes('Wrong password')
-                    ? 'Wrong password.'
-                    : 'Signing failed. Please try again.';
-                showError(ui.querySelector('#error'), msg);
-            }
-        });
+            ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+            ui.querySelector('#btn-biometric').onclick = async () => {
+                const btn = ui.querySelector('#btn-biometric');
+                const errorEl = ui.querySelector('#error');
+                setButtonState(btn, 'Authenticating...', true);
+
+                try {
+                    const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                    const { serializedTx } = await callWorker('signTransaction', {
+                        ...args, prfKey: Array.from(prfKey),
+                    });
+                    prfKey.fill(0);
+                    resolveSession({ serializedTx }, [serializedTx.buffer]);
+                } catch (err) {
+                    setButtonState(btn, 'Use Biometric / Passkey', false);
+                    if (err.name === 'NotAllowedError') {
+                        showError(errorEl, 'Authentication cancelled. Try again or use password.');
+                    } else {
+                        showError(errorEl, 'Biometric failed. Try again or use password.');
+                    }
+                }
+            };
+
+            ui.querySelector('#btn-password').onclick = () => {
+                setUI('');
+                showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
+            };
+        } else {
+            // Step 2b: No WebAuthn — go straight to password
+            showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
+        }
     };
 }
 
-async function flowExportMnemonic() {
-    showUI();
+function showExportedWords(words) {
+    setUI(renderMnemonicGrid(words, {
+        title: 'Your Recovery Words',
+        subtitle: 'Never share these words with anyone.',
+        confirmText: 'Done',
+        showCountdown: true,
+    }));
 
-    // Step 1: Password entry
+    // Auto-hide after 60 seconds
+    let remaining = 60;
+    const countdownEl = ui.querySelector('#countdown');
+    const interval = setInterval(() => {
+        remaining--;
+        if (countdownEl) countdownEl.textContent = remaining;
+        if (remaining <= 0) {
+            clearInterval(interval);
+            ui.querySelectorAll('.word-text').forEach(el => { el.textContent = ''; });
+            words.fill('');
+            setUI('');
+            resolveSession({ success: true });
+        }
+    }, 1000);
+
+    ui.querySelector('#btn-cancel').onclick = () => {
+        clearInterval(interval);
+        ui.querySelectorAll('.word-text').forEach(el => { el.textContent = ''; });
+        words.fill('');
+        rejectSession('User cancelled');
+    };
+    ui.querySelector('#btn-confirm').onclick = () => {
+        clearInterval(interval);
+        ui.querySelectorAll('.word-text').forEach(el => { el.textContent = ''; });
+        words.fill('');
+        setUI('');
+        resolveSession({ success: true });
+    };
+}
+
+function showPasswordFormForExport() {
     setUI(renderPasswordForm({
         title: 'Show Recovery Words',
         subtitle: 'Enter your password to reveal your recovery words.',
@@ -448,49 +725,61 @@ async function flowExportMnemonic() {
             const { words } = await callWorker('exportMnemonic', { password: pw });
             ui.querySelector('#password').value = '';
             setUI('');
-
-            // Step 2: Show mnemonic — words stay in keyguard, NEVER sent to wallet
-            setUI(renderMnemonicGrid(words, {
-                title: 'Your Recovery Words',
-                subtitle: 'Never share these words with anyone.',
-                confirmText: 'Done',
-                showCountdown: true,
-            }));
-
-            // Auto-hide after 60 seconds
-            let remaining = 60;
-            const countdownEl = ui.querySelector('#countdown');
-            const interval = setInterval(() => {
-                remaining--;
-                if (countdownEl) countdownEl.textContent = remaining;
-                if (remaining <= 0) {
-                    clearInterval(interval);
-                    ui.querySelectorAll('.word-text').forEach(el => { el.textContent = ''; });
-                    words.fill('');
-                    setUI('');
-                    resolveSession({ success: true });
-                }
-            }, 1000);
-
-            ui.querySelector('#btn-cancel').onclick = () => {
-                clearInterval(interval);
-                ui.querySelectorAll('.word-text').forEach(el => { el.textContent = ''; });
-                words.fill('');
-                rejectSession('User cancelled');
-            };
-            ui.querySelector('#btn-confirm').onclick = () => {
-                clearInterval(interval);
-                ui.querySelectorAll('.word-text').forEach(el => { el.textContent = ''; });
-                words.fill('');
-                setUI('');
-                resolveSession({ success: true });
-            };
+            showExportedWords(words);
         } catch (err) {
             ui.querySelector('#password').value = '';
-            setButtonState(ui.querySelector('#btn-submit'), 'Continue', false);
+            setButtonState(btn, 'Continue', false);
             showError(ui.querySelector('#error'), 'Wrong password.');
         }
     });
+}
+
+async function flowExportMnemonic() {
+    showUI();
+
+    // Check if WebAuthn is configured
+    const info = await callWorker('getWebAuthnInfo');
+
+    if (info.hasWebAuthn) {
+        // Offer biometric or password choice
+        setUI(renderUnlockChoice(
+            'Show Recovery Words',
+            'Authenticate to reveal your recovery words.',
+        ));
+
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+        ui.querySelector('#btn-biometric').onclick = async () => {
+            const btn = ui.querySelector('#btn-biometric');
+            const errorEl = ui.querySelector('#error');
+            setButtonState(btn, 'Authenticating...', true);
+
+            try {
+                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                const { words } = await callWorker('exportMnemonic', {
+                    prfKey: Array.from(prfKey),
+                });
+                prfKey.fill(0);
+                setUI('');
+                showExportedWords(words);
+            } catch (err) {
+                setButtonState(btn, 'Use Biometric / Passkey', false);
+                if (err.name === 'NotAllowedError') {
+                    showError(errorEl, 'Authentication cancelled. Try again or use password.');
+                } else {
+                    showError(errorEl, 'Biometric failed. Try again or use password.');
+                }
+            }
+        };
+
+        ui.querySelector('#btn-password').onclick = () => {
+            setUI('');
+            showPasswordFormForExport();
+        };
+    } else {
+        // No WebAuthn — go straight to password
+        showPasswordFormForExport();
+    }
 }
 
 async function flowDeleteWallet() {
@@ -524,6 +813,124 @@ async function flowDeleteWallet() {
             ui.querySelector('#password').value = '';
             setButtonState(btn, 'Delete Wallet', false);
             showError(errorEl, 'Failed to delete wallet.');
+        }
+    });
+}
+
+// ── Settings: WebAuthn management flows ───────────────────────────────────
+
+async function flowRegisterWebAuthn() {
+    showUI();
+
+    // Step 1: Password entry (needed to decrypt entropy for re-encryption with PRF key)
+    setUI(renderPasswordForm({
+        title: 'Enable Biometric Unlock',
+        subtitle: 'Enter your password to set up biometric authentication.',
+        isNew: false,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Verifying...', true);
+
+        // Verify password first
+        try {
+            const valid = await callWorker('verifyPassword', { password: pw });
+            if (!valid) {
+                ui.querySelector('#password').value = '';
+                setButtonState(btn, 'Continue', false);
+                showError(errorEl, 'Wrong password.');
+                return;
+            }
+        } catch (_) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            showError(errorEl, 'Verification failed.');
+            return;
+        }
+
+        ui.querySelector('#password').value = '';
+
+        // Step 2: WebAuthn registration
+        setUI(renderWebAuthnPrompt());
+
+        ui.querySelector('#btn-skip').onclick = () => rejectSession('User cancelled');
+
+        ui.querySelector('#btn-enable').onclick = async () => {
+            const btn2 = ui.querySelector('#btn-enable');
+            const errorEl2 = ui.querySelector('#error');
+            setButtonState(btn2, 'Registering...', true);
+
+            try {
+                const address = await callWorker('getStoredAddress');
+                const prfSalt = generatePrfSalt();
+                const userId = new TextEncoder().encode((address || '').substring(0, 32));
+                const { credentialId, prfKey } = await createWebAuthnCredential(
+                    userId, address || 'Nimiq Wallet', prfSalt,
+                );
+
+                await callWorker('saveWebAuthnSecret', {
+                    password: pw,
+                    prfKey: Array.from(prfKey),
+                    credentialId: Array.from(credentialId),
+                    prfSalt: Array.from(prfSalt),
+                });
+
+                prfKey.fill(0);
+                resolveSession({ success: true });
+            } catch (err) {
+                if (err.message === 'PRF_NOT_SUPPORTED') {
+                    showError(errorEl2, 'Your device does not support this feature.');
+                } else if (err.name === 'NotAllowedError') {
+                    showError(errorEl2, 'Registration was cancelled or timed out.');
+                } else {
+                    showError(errorEl2, 'Could not set up biometric unlock.');
+                }
+                setButtonState(btn2, 'Try Again', false);
+            }
+        };
+    });
+}
+
+async function flowRemoveWebAuthn() {
+    showUI();
+
+    // Password entry to confirm removal
+    setUI(renderPasswordForm({
+        title: 'Disable Biometric Unlock',
+        subtitle: 'Enter your password to remove biometric authentication.',
+        isNew: false,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Removing...', true);
+        try {
+            const valid = await callWorker('verifyPassword', { password: pw });
+            ui.querySelector('#password').value = '';
+            if (!valid) {
+                setButtonState(btn, 'Continue', false);
+                showError(errorEl, 'Wrong password.');
+                return;
+            }
+            await callWorker('removeWebAuthn');
+            resolveSession({ success: true });
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            showError(errorEl, 'Failed to remove biometric unlock.');
         }
     });
 }
@@ -563,6 +970,16 @@ window.addEventListener('message', async (event) => {
         return;
     }
 
+    if (command === 'getWebAuthnInfo') {
+        try {
+            const result = await callWorker('getWebAuthnInfo');
+            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
+        } catch (e) {
+            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
+        }
+        return;
+    }
+
     // UI flows — establish session context
     currentSession = {
         source: event.source,
@@ -571,11 +988,13 @@ window.addEventListener('message', async (event) => {
     };
 
     switch (command) {
-        case 'createWallet':    flowCreateWallet(); break;
-        case 'importWallet':    flowImportWallet(); break;
-        case 'signTransaction': flowSignTransaction(args || {}); break;
-        case 'exportMnemonic':  flowExportMnemonic(); break;
-        case 'deleteWallet':    flowDeleteWallet(); break;
+        case 'createWallet':     flowCreateWallet(); break;
+        case 'importWallet':     flowImportWallet(); break;
+        case 'signTransaction':  flowSignTransaction(args || {}); break;
+        case 'exportMnemonic':   flowExportMnemonic(); break;
+        case 'deleteWallet':     flowDeleteWallet(); break;
+        case 'registerWebAuthn': flowRegisterWebAuthn(); break;
+        case 'removeWebAuthn':   flowRemoveWebAuthn(); break;
         default:
             rejectSession(`Unknown command: ${command}`);
     }
