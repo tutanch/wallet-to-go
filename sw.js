@@ -1,12 +1,12 @@
 // AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
-// Generated from git SHA: 225d54a
+// Generated from git SHA: cbe7dc6
 //
 // Security guarantee: if any file on the server has a different hash than
 // what is listed here, the SW install fails and the previous known-good SW
 // continues serving users. Tampered files cannot reach returning visitors.
 
-const CACHE_NAME = 'nimiq-wallet-v225d54a';
+const CACHE_NAME = 'nimiq-wallet-vcbe7dc6';
 
 // SHA-256 hashes of every file. Computed at deploy time.
 const FILE_HASHES = {

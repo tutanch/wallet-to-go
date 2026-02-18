@@ -65,6 +65,7 @@ function resolveSession(result, transfer = []) {
     const { source, origin, sessionId } = currentSession;
     currentSession = null;
     document.getElementById('keyguard-ui').style.display = 'none';
+    source.postMessage({ type: 'hide' }, origin);   // hide the iframe in the wallet
     source.postMessage({ type: 'result', sessionId, result }, origin, transfer);
 }
 
@@ -72,6 +73,7 @@ function rejectSession(errorMsg) {
     const { source, origin, sessionId } = currentSession;
     currentSession = null;
     document.getElementById('keyguard-ui').style.display = 'none';
+    source.postMessage({ type: 'hide' }, origin);   // hide the iframe in the wallet
     source.postMessage({ type: 'error', sessionId, error: errorMsg }, origin);
 }
 
