@@ -4,6 +4,7 @@ import { unlock, hasPassword, restoreWithPasskey } from '../modules/keyguard-api
 export function lockView() {
     const el = document.createElement('div');
     el.className = 'view-container';
+    let active = true;
 
     el.innerHTML = `
         <div class="nq-card">
@@ -26,6 +27,7 @@ export function lockView() {
 
     // Show password button only if a password is set
     hasPassword().then(hasPw => {
+        if (!active) return;
         if (hasPw) {
             el.querySelector('#btn-password').style.display = '';
         }
@@ -43,8 +45,9 @@ export function lockView() {
 
         try {
             await restoreWithPasskey();
-            navigate('#dashboard');
+            if (active) navigate('#dashboard');
         } catch (e) {
+            if (!active) return;
             btn.disabled = false;
             btn.textContent = 'Login with Passkey';
             if (e.message !== 'User cancelled') {
@@ -63,8 +66,9 @@ export function lockView() {
 
         try {
             await unlock();
-            navigate('#dashboard');
+            if (active) navigate('#dashboard');
         } catch (e) {
+            if (!active) return;
             if (e.message !== 'User cancelled') {
                 errorEl.textContent = 'Could not verify password. Please try again.';
                 errorEl.style.display = '';
@@ -74,5 +78,8 @@ export function lockView() {
         }
     });
 
-    return el;
+    return {
+        element: el,
+        cleanup: () => { active = false; },
+    };
 }

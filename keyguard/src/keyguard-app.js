@@ -86,7 +86,8 @@ function escHtml(str) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function showError(el, msg) {
@@ -262,12 +263,12 @@ function renderDeleteConfirm({ showPassword = true } = {}) {
 
 function requestWebAuthnFromWallet(action, params = {}) {
     return new Promise((resolve, reject) => {
-        // Timeout prevents the flow from hanging if the wallet never responds
-        // (e.g. if the webauthn delegation fails silently on the wallet side).
+        // Timeout prevents the flow from hanging if the wallet never responds.
+        // 120s allows for slow cross-device passkey ceremonies (Bluetooth/QR).
         const timer = setTimeout(() => {
             window.removeEventListener('message', onMessage);
             reject(new Error('WebAuthn delegation timed out'));
-        }, 8000);
+        }, 120000);
 
         function onMessage(event) {
             if (event.origin !== WALLET_ORIGIN) return;
@@ -290,7 +291,8 @@ function requestWebAuthnFromWallet(action, params = {}) {
 async function isPrfSupported() {
     try {
         return await requestWebAuthnFromWallet('isPrfSupported');
-    } catch (_) {
+    } catch (e) {
+        console.debug('PRF support check failed:', e);
         return false;
     }
 }
@@ -1031,7 +1033,7 @@ async function flowRegisterWebAuthn() {
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
     ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const pw = ui.querySelector('#password').value;
+        let pw = ui.querySelector('#password').value;
         const errorEl = ui.querySelector('#error');
         if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
 
@@ -1043,12 +1045,15 @@ async function flowRegisterWebAuthn() {
             const valid = await callWorker('verifyPassword', { password: pw });
             if (!valid) {
                 ui.querySelector('#password').value = '';
+                pw = undefined;
                 setButtonState(btn, 'Continue', false);
                 showError(errorEl, 'Wrong password.');
                 return;
             }
-        } catch (_) {
+        } catch (e) {
+            console.debug('Password verification error:', e);
             ui.querySelector('#password').value = '';
+            pw = undefined;
             setButtonState(btn, 'Continue', false);
             showError(errorEl, 'Verification failed.');
             return;
@@ -1081,6 +1086,9 @@ async function flowRegisterWebAuthn() {
                     prfSalt: Array.from(prfSalt),
                 });
 
+                // Allow GC of password string sooner (JS strings are immutable
+                // so we can't zero them, but we can drop the reference)
+                pw = undefined;
                 prfKey.fill(0);
                 resolveSession({ success: true });
             } catch (err) {
@@ -1293,50 +1301,11 @@ window.addEventListener('message', async (event) => {
 
     const { sessionId, command, args } = event.data;
 
-    // Transparent passthroughs: no UI, immediate response
-    if (command === 'hasKey') {
+    // Transparent passthroughs: no UI, immediate response via worker
+    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'hasPasskeyBackup', 'getWebAuthnInfo', 'hasPassword'];
+    if (PASSTHROUGH_COMMANDS.includes(command)) {
         try {
-            const result = await callWorker('hasKey');
-            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
-        } catch (e) {
-            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
-        }
-        return;
-    }
-
-    if (command === 'getStoredAddress') {
-        try {
-            const result = await callWorker('getStoredAddress');
-            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
-        } catch (e) {
-            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
-        }
-        return;
-    }
-
-    if (command === 'hasPasskeyBackup') {
-        try {
-            const result = await callWorker('hasPasskeyBackup');
-            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
-        } catch (e) {
-            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
-        }
-        return;
-    }
-
-    if (command === 'getWebAuthnInfo') {
-        try {
-            const result = await callWorker('getWebAuthnInfo');
-            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
-        } catch (e) {
-            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
-        }
-        return;
-    }
-
-    if (command === 'hasPassword') {
-        try {
-            const result = await callWorker('hasPassword');
+            const result = await callWorker(command);
             event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
         } catch (e) {
             event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);

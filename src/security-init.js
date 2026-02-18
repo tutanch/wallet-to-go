@@ -26,6 +26,16 @@
         });
     } catch (_) { /* non-critical */ }
 
+    // Freeze crypto.getRandomValues so it can't be replaced with predictable output
+    try {
+        const origGetRandomValues = crypto.getRandomValues.bind(crypto);
+        Object.defineProperty(crypto, 'getRandomValues', {
+            value: origGetRandomValues,
+            writable: false,
+            configurable: false,
+        });
+    } catch (_) { /* non-critical */ }
+
     // Freeze Uint8Array.prototype.fill so key-zeroing can't be neutered
     try {
         const origFill = Uint8Array.prototype.fill;

@@ -153,7 +153,8 @@ export function settingsView() {
                 webauthnBtn.style.display = '';
                 webauthnBtn.disabled = false;
             }
-        } catch (_) {
+        } catch (e) {
+            console.debug('WebAuthn info check failed:', e);
             securitySection.style.display = 'none';
         }
     }

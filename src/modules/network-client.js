@@ -13,9 +13,11 @@ export async function connect() {
     if (clientPromise && currentNetwork === network) return clientPromise;
 
     if (clientPromise && currentNetwork !== network) {
-        const oldClient = await clientPromise;
-        await oldClient.disconnectNetwork();
+        const oldPromise = clientPromise;
         clientPromise = null;
+        currentNetwork = null;
+        const oldClient = await oldPromise;
+        await oldClient.disconnectNetwork();
     }
 
     currentNetwork = network;

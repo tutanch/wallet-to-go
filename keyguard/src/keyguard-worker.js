@@ -85,6 +85,27 @@ function deriveKeyPair(entropy) {
     return { privateKey, publicKey };
 }
 
+// ── HKDF helper ─────────────────────────────────────────────────────
+// Derives deterministic 32-byte entropy from a PRF output for cross-device
+// passkey restore. Using HKDF avoids treating raw PRF output directly as
+// wallet entropy, which would tightly couple wallet security to the
+// authenticator's PRF implementation quality.
+
+const HKDF_SALT = new TextEncoder().encode('nimiq-wallet-hkdf-v1');
+const HKDF_INFO = new TextEncoder().encode('cross-device-entropy');
+
+async function deriveEntropyFromPrf(prfKeyBytes) {
+    const ikm = await crypto.subtle.importKey(
+        'raw', new Uint8Array(prfKeyBytes), 'HKDF', false, ['deriveBits'],
+    );
+    const derived = await crypto.subtle.deriveBits(
+        { name: 'HKDF', hash: 'SHA-256', salt: HKDF_SALT, info: HKDF_INFO },
+        ikm,
+        256,
+    );
+    return new Uint8Array(derived);
+}
+
 // ── WASM init ──────────────────────────────────────────────────────
 
 let wasmReady = false;
@@ -164,6 +185,17 @@ async function clearPasskeyBackup() {
 
 // ── WebAuthn AES-GCM helpers ──────────────────────────────────────
 
+async function encryptWithPrfKey(entropyBytes, prfKey) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const aesKey = await crypto.subtle.importKey(
+        'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
+    );
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv }, aesKey, entropyBytes,
+    );
+    return { encryptedSecret: new Uint8Array(ciphertext), iv };
+}
+
 async function decryptWithPrfKey(record, prfKey) {
     if (!record.webauthn) throw new Error('No WebAuthn credential found');
     const { encryptedSecret, iv } = record.webauthn;
@@ -229,18 +261,11 @@ const handlers = {
 
         // Passkey encryption (optional)
         if (prfKey) {
-            const entropyBytes = pendingEntropy.serialize();
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const aesKey = await crypto.subtle.importKey(
-                'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
-            );
-            const ciphertext = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, aesKey, entropyBytes,
-            );
+            const { encryptedSecret, iv } = await encryptWithPrfKey(pendingEntropy.serialize(), prfKey);
             record.webauthn = {
                 credentialId: new Uint8Array(credentialId),
                 prfSalt: new Uint8Array(prfSalt),
-                encryptedSecret: new Uint8Array(ciphertext),
+                encryptedSecret,
                 iv,
             };
         }
@@ -283,18 +308,11 @@ const handlers = {
 
         // Passkey encryption (optional)
         if (prfKey) {
-            const entropyBytes = entropy.serialize();
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const aesKey = await crypto.subtle.importKey(
-                'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
-            );
-            const ciphertext = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, aesKey, entropyBytes,
-            );
+            const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
             record.webauthn = {
                 credentialId: new Uint8Array(credentialId),
                 prfSalt: new Uint8Array(prfSalt),
-                encryptedSecret: new Uint8Array(ciphertext),
+                encryptedSecret,
                 iv,
             };
         }
@@ -448,20 +466,13 @@ const handlers = {
         }
 
         // Encrypt entropy with PRF-derived key using AES-256-GCM
-        const entropyBytes = entropy.serialize();
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const aesKey = await crypto.subtle.importKey(
-            'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
-        );
-        const ciphertext = await crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv }, aesKey, entropyBytes,
-        );
+        const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
 
         // Update record with WebAuthn data
         record.webauthn = {
             credentialId: new Uint8Array(credentialId),
             prfSalt: new Uint8Array(prfSalt),
-            encryptedSecret: new Uint8Array(ciphertext),
+            encryptedSecret,
             iv,
         };
 
@@ -531,8 +542,10 @@ const handlers = {
             storedCredentialId = backup.credentialId;
             storedPrfSalt = backup.prfSalt;
         } else {
-            // Cross-device restore: PRF key IS the entropy
-            entropy = new Entropy(new Uint8Array(prfKey));
+            // Cross-device restore: derive entropy from PRF output via HKDF
+            // to avoid using raw authenticator output directly as wallet key material
+            const derivedBytes = await deriveEntropyFromPrf(prfKey);
+            entropy = new Entropy(derivedBytes);
             storedCredentialId = new Uint8Array(credentialId);
             storedPrfSalt = new Uint8Array(prfSalt);
         }
@@ -552,18 +565,12 @@ const handlers = {
         }
 
         // Encrypt entropy with PRF key for future WebAuthn use
-        const newIv = crypto.getRandomValues(new Uint8Array(12));
-        const encKey = await crypto.subtle.importKey(
-            'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
-        );
-        const ciphertext = await crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv: newIv }, encKey, entropy.serialize(),
-        );
+        const { encryptedSecret, iv: newIv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
 
         record.webauthn = {
             credentialId: storedCredentialId,
             prfSalt: storedPrfSalt,
-            encryptedSecret: new Uint8Array(ciphertext),
+            encryptedSecret,
             iv: newIv,
         };
 

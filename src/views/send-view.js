@@ -36,6 +36,7 @@ export async function sendView() {
                     <label class="nq-label">Fee (luna)</label>
                     <input type="number" class="nq-input" id="fee" placeholder="0" value="0" min="0" step="1">
                 </div>
+                <p class="nq-text error-text" id="warning" style="display: none;"></p>
                 <p class="nq-text error-text" id="error" style="display: none;"></p>
                 <div class="success-message" id="success" style="display: none;">
                     <p class="nq-text success-text">Transaction sent successfully!</p>
@@ -50,15 +51,19 @@ export async function sendView() {
     `;
 
     let sending = false; // Prevent double-send
+    let selfSendConfirmed = false; // Track if user confirmed self-send
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
+    el.querySelector('#recipient').addEventListener('input', () => { selfSendConfirmed = false; });
 
     el.querySelector('#btn-send').addEventListener('click', async () => {
         if (sending) return;
 
         const errorEl = el.querySelector('#error');
+        const warningEl = el.querySelector('#warning');
         const successEl = el.querySelector('#success');
         errorEl.style.display = 'none';
+        warningEl.style.display = 'none';
         successEl.style.display = 'none';
 
         // Validate inputs
@@ -82,9 +87,12 @@ export async function sendView() {
         }
 
         if (recipientValue.replace(/\s/g, '') === address.replace(/\s/g, '')) {
-            errorEl.textContent = 'Warning: You are sending to your own address.';
-            errorEl.style.display = '';
-            // Allow proceeding — just warn, don't block
+            if (!selfSendConfirmed) {
+                warningEl.textContent = 'You are sending to your own address. Click Send again to confirm.';
+                warningEl.style.display = '';
+                selfSendConfirmed = true;
+                return;
+            }
         }
 
         if (isNaN(valueLuna) || valueLuna <= 0) {
