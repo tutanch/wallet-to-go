@@ -1,6 +1,6 @@
 import { loadNimiq } from './nimiq.js';
 import { registerRoute, initRouter, navigate } from './router.js';
-import { hasKey, keyguardReady, getWebAuthnInfo } from './modules/keyguard-api.js';
+import { hasKey, keyguardReady } from './modules/keyguard-api.js';
 import './modules/webauthn.js'; // Register WebAuthn delegation listener for keyguard iframe
 import { welcomeView } from './views/welcome-view.js';
 import { createView } from './views/create-view.js';
@@ -38,13 +38,7 @@ async function init() {
         const hash = window.location.hash;
 
         if (walletExists && (!hash || hash === '#welcome' || hash === '#create' || hash === '#import')) {
-            // Show lock screen if passkey is configured, otherwise go straight to dashboard
-            let hasWebAuthn = false;
-            try {
-                const info = await getWebAuthnInfo();
-                hasWebAuthn = info.hasWebAuthn;
-            } catch (_) {}
-            navigate(hasWebAuthn ? '#lock' : '#dashboard');
+            navigate('#lock');
         } else if (!walletExists && hash !== '#create' && hash !== '#import') {
             navigate('#welcome');
         }
