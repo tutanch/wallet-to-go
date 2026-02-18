@@ -1072,6 +1072,9 @@ window.addEventListener('message', async (event) => {
         return;
     }
 
+    // WebAuthn responses are handled by the requestWebAuthnFromWallet listener — ignore here.
+    if (event.data?.type === 'webauthn-response') return;
+
     const { sessionId, command, args } = event.data;
 
     // Transparent passthroughs: no UI, immediate response

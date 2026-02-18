@@ -96,6 +96,11 @@ function call(command, args) {
         const id = ++sessionId;
         pending.set(id, { resolve, reject });
         const frame = getFrame();
+        if (!frame.contentWindow) {
+            pending.delete(id);
+            reject(new Error('Keyguard iframe blocked — disable Brave Shield or add this site to its exceptions'));
+            return;
+        }
         // Show the iframe immediately for UI commands instead of waiting
         // for the keyguard's round-trip 'show' message (which can be unreliable).
         if (UI_COMMANDS.has(command)) {
