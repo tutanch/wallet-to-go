@@ -159,6 +159,14 @@ export function deleteWallet() {
     return call('deleteWallet');
 }
 
+/**
+ * Unlock wallet. Keyguard shows password entry for verification.
+ * Returns { success: true }.
+ */
+export function unlock() {
+    return call('unlock');
+}
+
 /** Check if WebAuthn is configured. Transparent passthrough — no UI shown. */
 export function getWebAuthnInfo() {
     return call('getWebAuthnInfo');

@@ -1,6 +1,6 @@
 import { loadNimiq } from './nimiq.js';
 import { registerRoute, initRouter, navigate } from './router.js';
-import { hasKey, keyguardReady } from './modules/keyguard-api.js';
+import { hasKey, keyguardReady, getWebAuthnInfo } from './modules/keyguard-api.js';
 import './modules/webauthn.js'; // Register WebAuthn delegation listener for keyguard iframe
 import { welcomeView } from './views/welcome-view.js';
 import { createView } from './views/create-view.js';
@@ -10,6 +10,7 @@ import { sendView } from './views/send-view.js';
 import { receiveView } from './views/receive-view.js';
 import { historyView } from './views/history-view.js';
 import { settingsView } from './views/settings-view.js';
+import { lockView } from './views/lock-view.js';
 
 // Register service worker for integrity-pinned caching.
 // Non-blocking — does not delay app startup.
@@ -30,13 +31,20 @@ async function init() {
         registerRoute('#receive', () => receiveView());
         registerRoute('#history', () => historyView());
         registerRoute('#settings', () => settingsView());
+        registerRoute('#lock', () => lockView());
 
-        // If wallet exists, go to dashboard; otherwise show welcome
+        // If wallet exists, go to dashboard (or lock screen); otherwise show welcome
         const walletExists = await hasKey();
         const hash = window.location.hash;
 
         if (walletExists && (!hash || hash === '#welcome' || hash === '#create' || hash === '#import')) {
-            navigate('#dashboard');
+            // Show lock screen if passkey is configured, otherwise go straight to dashboard
+            let hasWebAuthn = false;
+            try {
+                const info = await getWebAuthnInfo();
+                hasWebAuthn = info.hasWebAuthn;
+            } catch (_) {}
+            navigate(hasWebAuthn ? '#lock' : '#dashboard');
         } else if (!walletExists && hash !== '#create' && hash !== '#import') {
             navigate('#welcome');
         }

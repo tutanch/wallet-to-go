@@ -862,6 +862,41 @@ async function flowRegisterWebAuthn() {
     });
 }
 
+async function flowUnlock() {
+    showUI();
+
+    setUI(renderPasswordForm({
+        title: 'Unlock Wallet',
+        subtitle: 'Enter your password to continue.',
+        isNew: false,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Verifying...', true);
+        try {
+            const valid = await callWorker('verifyPassword', { password: pw });
+            ui.querySelector('#password').value = '';
+            if (!valid) {
+                setButtonState(btn, 'Continue', false);
+                showError(errorEl, 'Wrong password.');
+                return;
+            }
+            resolveSession({ success: true });
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            showError(errorEl, 'Verification failed.');
+        }
+    });
+}
+
 async function flowRemoveWebAuthn() {
     showUI();
 
@@ -957,6 +992,7 @@ window.addEventListener('message', async (event) => {
         case 'signTransaction':  flowSignTransaction(args || {}); break;
         case 'exportMnemonic':   flowExportMnemonic(); break;
         case 'deleteWallet':     flowDeleteWallet(); break;
+        case 'unlock':           flowUnlock(); break;
         case 'registerWebAuthn': flowRegisterWebAuthn(); break;
         case 'removeWebAuthn':   flowRemoveWebAuthn(); break;
         default:
