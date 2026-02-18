@@ -6,10 +6,14 @@ A lightweight, fully client-side Nimiq blockchain wallet built with vanilla Java
 
 - **Create or import** wallets via BIP39 mnemonic (24 words)
 - **Send and receive** NIM on Mainnet or Testnet
+- **Passkey / biometric unlock** — use fingerprint, face, or device PIN instead of a password; powered by WebAuthn PRF extension with AES-GCM encryption
+- **Cross-device passkey restore** — discoverable credentials let you recover your wallet on a new browser via iCloud Keychain, Google Password Manager, etc.
+- **Dual authentication** — wallets can have both a password and a passkey; choose which to use at sign-in
+- **Lock screen** — returning users are prompted to authenticate via passkey or password before accessing the wallet
 - **Real-time updates** — balance, block height, and transactions stream live via Nimiq's P2P network
 - **Cross-origin keyguard** — all key operations run in an isolated iframe on a separate origin; private keys never touch the wallet's origin
-- **Encrypted key storage** — private keys are encrypted with a user password and stored in the keyguard's IndexedDB (inaccessible to the wallet)
-- **QR code** generation for receiving addresses
+- **Encrypted key storage** — private keys are encrypted with a user password or passkey-derived key and stored in the keyguard's IndexedDB (inaccessible to the wallet)
+- **QR code** generation for receiving addresses (native encoder, no external library)
 - **Transaction history** with pagination
 - **Network switching** between Mainnet and Testnet
 - **Service worker integrity pinning** — all assets are SHA-256 verified on install; tampered files are rejected
@@ -53,15 +57,19 @@ src/
   modules/
     keyguard-api.js       postMessage bridge to the keyguard iframe
     network-client.js     Nimiq network client singleton (pico sync)
+    webauthn.js           WebAuthn delegation (passkey create/get for keyguard)
   views/
-    welcome-view.js       Landing page
+    welcome-view.js       Landing page with create, import, and passkey login
     create-view.js        Triggers keyguard create flow
     import-view.js        Triggers keyguard import flow
+    lock-view.js          Lock screen — passkey or password unlock
     dashboard-view.js     Balance, status, recent transactions
     send-view.js          Send NIM flow (keyguard signs)
     receive-view.js       Address display + QR code
     history-view.js       Full transaction history
-    settings-view.js      Network switch, backup, wallet deletion
+    settings-view.js      Network switch, biometric toggle, backup, deletion
+  lib/
+    qr-encoder.js         Native QR code encoder (no external library)
   styles/
     app.css               Application styles
 lib/
@@ -69,7 +77,6 @@ lib/
 public/
   vendor/
     nimiq-style.min.css   Self-hosted Nimiq Style CSS
-    qr-creator.min.js     Self-hosted QR Creator
   favicon.svg
 
 keyguard/                 Keyguard app (deployed to separate origin)
@@ -83,6 +90,11 @@ keyguard/                 Keyguard app (deployed to separate origin)
     nimiq-core/           Nimiq Core WASM library (copy)
   public/
     favicon.svg
+
+batch-sender/             Optional batch transaction tool (Docker)
+  index.html              Standalone batch-send UI
+  Dockerfile              nginx:alpine serving the tool + nimiq-core
+  docker-compose.yml      Exposes on 127.0.0.1:8080
 ```
 
 ## Requirements
@@ -168,10 +180,16 @@ On first visit, the service worker pre-caches every asset and verifies each file
 - If GitHub Pages is compromised and serves tampered files, the SW update fails the hash check — the install is aborted and the old known-good SW stays active
 - The only window of vulnerability is the very first visit before any SW is installed
 
+### WebAuthn / passkey security
+
+- **PRF-based encryption** — passkey-protected wallets derive a symmetric key from the WebAuthn PRF extension output and encrypt the wallet entropy with AES-GCM; the PRF key is never stored, only the credential ID and salt
+- **Passkey backup store** — a separate `nimiq-passkey-backup` IndexedDB preserves passkey metadata (credential ID, encrypted entropy, salt) even if the main wallet is deleted, enabling cross-device restore via discoverable credentials
+- **Gesture delegation** — since the keyguard iframe cannot trigger `navigator.credentials` (requires transient user activation from a real click), the wallet shows a brief overlay prompt so the user clicks in the wallet context first
+
 ### Additional hardening
 
 - **Content Security Policy** — `script-src` limited to `'self'` and `'wasm-unsafe-eval'` (no `'unsafe-eval'`); `frame-src` restricted to the keyguard origin; no CDN sources
-- **Self-hosted dependencies** — `nimiq-style.min.css` and `qr-creator.min.js` are vendored locally (SHA-384 verified before committing); no runtime CDN requests
+- **Self-hosted dependencies** — `nimiq-style.min.css` is vendored locally (SHA-384 verified before committing); no runtime CDN requests
 - **API freezing** (`security-init.js`) protects `crypto.subtle`, `indexedDB`, and `Uint8Array.prototype.fill` from prototype pollution before any other scripts load
 - **DOM-safe rendering** — user-facing text uses `textContent` / DOM APIs; the keyguard uses `escHtml()` for all template interpolation
 - **Sandboxed iframe** — `sandbox="allow-scripts allow-same-origin allow-forms"` on the keyguard iframe; `allow-same-origin` is safe because the origins are already different
@@ -186,11 +204,23 @@ On first visit, the service worker pre-caches every asset and verifies each file
 
 All network traffic is direct P2P WebSocket connections to the Nimiq blockchain.
 
+### Batch sender
+
+An optional Docker-based tool for sending NIM to multiple recipients in bulk. Located in `batch-sender/`.
+
+```bash
+cd batch-sender
+docker-compose up
+```
+
+Opens at `http://127.0.0.1:8080`. This is a standalone tool independent of the main wallet.
+
 ## Tech Stack
 
 - [Nimiq Core](https://github.com/nimiq/core-rs-albatross) (Albatross PoS, pico sync mode)
 - [Nimiq Style](https://github.com/nimiq/nimiq-style) CSS framework (self-hosted)
-- [QR Creator](https://github.com/nimiq/qr-creator) for QR code generation (self-hosted)
+- Native QR encoder (`src/lib/qr-encoder.js`, no external library)
+- WebAuthn PRF extension + WebCrypto API (AES-GCM) for passkey support
 - Vanilla JavaScript (ES modules, no bundler)
 
 ## License

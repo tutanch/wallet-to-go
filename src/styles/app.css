@@ -290,6 +290,8 @@ body {
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
     min-height: 48px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .nq-button:hover {
