@@ -191,16 +191,30 @@ window.addEventListener('message', async (event) => {
                 // No user gesture needed for feature detection
                 result = await isPrfSupported();
                 break;
-            case 'create':
-                // Show gesture prompt, then call WebAuthn API
-                await showGesturePrompt(true);
-                result = await createCredential(event.data);
+            case 'create': {
+                // Hide keyguard iframe so gesture prompt is visible
+                // (iframes can composite above DOM overlays despite z-index)
+                const frame = getFrame();
+                if (frame) frame.style.display = 'none';
+                try {
+                    await showGesturePrompt(true);
+                    result = await createCredential(event.data);
+                } finally {
+                    if (frame) frame.style.display = '';
+                }
                 break;
-            case 'get':
-                // Show gesture prompt, then call WebAuthn API
-                await showGesturePrompt(false);
-                result = await getPrfKey(event.data);
+            }
+            case 'get': {
+                const frame = getFrame();
+                if (frame) frame.style.display = 'none';
+                try {
+                    await showGesturePrompt(false);
+                    result = await getPrfKey(event.data);
+                } finally {
+                    if (frame) frame.style.display = '';
+                }
                 break;
+            }
             default:
                 throw new Error(`Unknown WebAuthn action: ${action}`);
         }
