@@ -92,9 +92,10 @@ find "$WORK/kg" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
 # Copy keyguard source
 cp -R "$ROOT/keyguard/"* "$WORK/kg/"
 
-# Replace [WALLET_ORIGIN] placeholder
+# Replace [WALLET_ORIGIN] placeholder in all keyguard source files
 sed -i.bak "s|\[WALLET_ORIGIN\]|${WALLET_ORIGIN}|g" "$WORK/kg/index.html"
-rm -f "$WORK/kg/index.html.bak"
+sed -i.bak "s|\[WALLET_ORIGIN\]|${WALLET_ORIGIN}|g" "$WORK/kg/src/keyguard-app.js"
+rm -f "$WORK/kg/index.html.bak" "$WORK/kg/src/keyguard-app.js.bak"
 
 # .nojekyll so GitHub Pages serves everything as-is
 touch "$WORK/kg/.nojekyll"
