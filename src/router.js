@@ -35,6 +35,18 @@ async function handleHashChange() {
     // If another navigation started while we were checking, abort this one
     if (thisNavId !== navigationId) return;
 
+    const factory = routes[hash];
+    if (!factory) {
+        navigate('#welcome');
+        return;
+    }
+
+    // Create the new view BEFORE clearing the old one.
+    // This keeps the current view visible while an async view (e.g. dashboard)
+    // loads its data, preventing a blank flash during the transition.
+    const result = await factory();
+    if (thisNavId !== navigationId) return;
+
     if (currentCleanup) {
         currentCleanup();
         currentCleanup = null;
@@ -42,21 +54,13 @@ async function handleHashChange() {
 
     $app.innerHTML = '';
 
-    const factory = routes[hash];
-    if (factory) {
-        const result = await factory();
-        // If another navigation started while the view was loading, discard this result
-        if (thisNavId !== navigationId) return;
-        if (result instanceof HTMLElement) {
-            $app.appendChild(result);
-        } else if (result && result.element) {
-            $app.appendChild(result.element);
-            if (result.cleanup) {
-                currentCleanup = result.cleanup;
-            }
+    if (result instanceof HTMLElement) {
+        $app.appendChild(result);
+    } else if (result && result.element) {
+        $app.appendChild(result.element);
+        if (result.cleanup) {
+            currentCleanup = result.cleanup;
         }
-    } else {
-        navigate('#welcome');
     }
 }
 
