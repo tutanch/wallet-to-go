@@ -1,81 +1,118 @@
-// Keyguard API — postMessage bridge to the keyguard worker.
-// This is the ONLY module that communicates with the worker.
-// No private keys ever cross this boundary.
+// Keyguard API — cross-origin iframe postMessage bridge.
+// The keyguard iframe lives at KEYGUARD_ORIGIN and owns all key operations.
+// Passwords never cross this module. Keys never leave the keyguard origin.
+//
+// Replace [KEYGUARD_ORIGIN] with the actual keyguard origin before deploying,
+// e.g. https://nimiq-wallet-keyguard.github.io
 
-let worker = null;
-let requestId = 0;
-const pending = new Map();
+const KEYGUARD_ORIGIN = '[KEYGUARD_ORIGIN]';
 
-function getWorker() {
-    if (!worker) {
-        worker = new Worker(
-            new URL('../keyguard-worker.js', import.meta.url),
-            { type: 'module' },
-        );
-        worker.onmessage = (e) => {
-            const { id, result, error } = e.data;
-            const p = pending.get(id);
-            if (!p) return;
-            pending.delete(id);
-            if (error) {
-                p.reject(new Error(error));
-            } else {
-                p.resolve(result);
-            }
-        };
-    }
-    return worker;
+// ── Iframe reference ───────────────────────────────────────────────────────
+
+function getFrame() {
+    const frame = document.getElementById('keyguard-frame');
+    if (!frame) throw new Error('Keyguard iframe not found in DOM');
+    return frame;
 }
+
+// ── Keyguard ready promise ─────────────────────────────────────────────────
+// Resolves when the keyguard iframe sends { type: 'ready' }.
+// main.js awaits this (in parallel with loadNimiq()) before making any calls.
+
+export const keyguardReady = new Promise((resolve) => {
+    window.addEventListener('message', function onReady(event) {
+        if (event.origin !== KEYGUARD_ORIGIN) return;
+        if (event.data?.type === 'ready') {
+            window.removeEventListener('message', onReady);
+            resolve();
+        }
+    });
+});
+
+// ── Session tracking ───────────────────────────────────────────────────────
+
+let sessionId = 0;
+const pending = new Map(); // sessionId → { resolve, reject }
+
+// ── Message listener (installed at module load time) ───────────────────────
+
+window.addEventListener('message', (event) => {
+    if (event.origin !== KEYGUARD_ORIGIN) return;
+
+    const { type, sessionId: sid, result, error } = event.data;
+
+    if (type === 'show') {
+        const frame = document.getElementById('keyguard-frame');
+        if (frame) frame.style.display = '';
+        return;
+    }
+
+    if (type === 'hide') {
+        const frame = document.getElementById('keyguard-frame');
+        if (frame) frame.style.display = 'none';
+        return;
+    }
+
+    if (type === 'result' || type === 'error') {
+        const p = pending.get(sid);
+        if (!p) return;
+        pending.delete(sid);
+        if (type === 'error') {
+            p.reject(new Error(error));
+        } else {
+            p.resolve(result);
+        }
+    }
+});
+
+// ── Core send function ─────────────────────────────────────────────────────
 
 function call(command, args) {
     return new Promise((resolve, reject) => {
-        const id = ++requestId;
+        const id = ++sessionId;
         pending.set(id, { resolve, reject });
-
-        // Transfer ArrayBuffers if present (zero-copy into worker)
-        const transfer = [];
-        if (args && args.serializedTx instanceof Uint8Array) {
-            transfer.push(args.serializedTx.buffer);
-        }
-
-        getWorker().postMessage({ id, command, args }, transfer);
+        getFrame().contentWindow.postMessage(
+            { sessionId: id, command, args: args || {} },
+            KEYGUARD_ORIGIN,
+        );
     });
 }
 
-// ── Public API ─────────────────────────────────────────────────────
-// These mirror the old key-store / wallet-manager / transaction-builder
-// surface, but none of them expose entropy or private keys.
+// ── Public API ─────────────────────────────────────────────────────────────
 
-/** Check if a wallet exists in storage */
+/** Check if a wallet exists. Transparent passthrough — no UI shown. */
 export function hasKey() {
     return call('hasKey');
 }
 
-/** Get the stored wallet address (user-friendly string) or null */
+/** Get stored wallet address. Transparent passthrough — no UI shown. */
 export function getStoredAddress() {
     return call('getStoredAddress');
 }
 
-/** Create a new wallet. Returns { mnemonic: string[], address: string } */
+/**
+ * Create new wallet. Keyguard shows mnemonic display + password entry.
+ * Returns { address }.
+ */
 export function createWallet() {
     return call('createWallet');
 }
 
-/** Save the pending wallet (from createWallet) with a password */
-export function saveWallet(password) {
-    return call('saveWallet', { password });
-}
-
-/** Import a wallet from mnemonic words and encrypt with password */
-export function importWallet(words, password) {
-    return call('importWallet', { words, password });
+/**
+ * Import wallet. Keyguard shows word entry + password entry.
+ * No args — user enters words and password inside the keyguard.
+ * Returns { address }.
+ */
+export function importWallet() {
+    return call('importWallet');
 }
 
 /**
- * Sign a transaction. Returns { serializedTx: Uint8Array }.
- * The password decrypts the key inside the worker — the key never leaves.
+ * Sign transaction. Keyguard shows TX confirmation + password entry.
+ * No password param — keyguard prompts the user.
+ * Returns { serializedTx: Uint8Array }.
  */
-export function signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, password }) {
+export function signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId }) {
     return call('signTransaction', {
         senderAddress,
         recipientAddress,
@@ -84,21 +121,22 @@ export function signTransaction({ senderAddress, recipientAddress, value, fee, m
         message,
         validityStartHeight,
         networkId,
-        password,
     });
 }
 
-/** Export mnemonic words (requires password). Returns { words: string[] } */
-export function exportMnemonic(password) {
-    return call('exportMnemonic', { password });
+/**
+ * Export mnemonic. Keyguard shows password entry then displays words.
+ * Words are NEVER sent to the wallet — keyguard displays them internally.
+ * Returns { success: true }.
+ */
+export function exportMnemonic() {
+    return call('exportMnemonic');
 }
 
-/** Verify a password against the stored key. Returns boolean. */
-export function verifyPassword(password) {
-    return call('verifyPassword', { password });
-}
-
-/** Delete the wallet from storage */
+/**
+ * Delete wallet. Keyguard shows password + "DELETE" confirmation.
+ * Returns { success: true }.
+ */
 export function deleteWallet() {
     return call('deleteWallet');
 }

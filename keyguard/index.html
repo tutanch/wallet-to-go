@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+        Strict CSP for the keyguard:
+        - connect-src 'none': keyguard never makes network requests
+        - frame-ancestors [WALLET_ORIGIN]: only the wallet can embed this iframe
+        - form-action 'none': no form submissions to external URLs
+        Replace [WALLET_ORIGIN] with the wallet's actual origin before deploying,
+        e.g. https://tutanch.github.io
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'none'; worker-src 'self' blob:; frame-ancestors [WALLET_ORIGIN]; form-action 'none'; base-uri 'self'; object-src 'none'">
+    <title>Nimiq Keyguard</title>
+    <link rel="icon" href="public/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="src/styles/keyguard.css">
+</head>
+<body>
+    <!-- All keyguard UI is rendered here by keyguard-app.js -->
+    <div id="keyguard-ui" style="display:none;"></div>
+    <script type="importmap">
+    {
+        "imports": {
+            "@nimiq/core": "./lib/nimiq-core/web/index.js"
+        }
+    }
+    </script>
+    <script type="module" src="src/keyguard-app.js"></script>
+</body>
+</html>

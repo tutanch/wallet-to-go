@@ -9,76 +9,36 @@ export function importView() {
         <div class="nq-card">
             <div class="nq-card-header">
                 <h1 class="nq-h1">Import Wallet</h1>
-                <p class="nq-text">Enter your 24 recovery words to restore your wallet.</p>
+                <p class="nq-text">The keyguard will securely collect your recovery words and set a new password.</p>
             </div>
-            <form id="import-form" style="display: contents;">
             <div class="nq-card-body">
-                <div class="form-group">
-                    <textarea class="nq-input mnemonic-input" id="mnemonic" rows="4"
-                        placeholder="Enter your 24 recovery words separated by spaces"></textarea>
-                </div>
-                <div class="form-group">
-                    <input type="password" class="nq-input" id="password" placeholder="Set a password" autocomplete="new-password">
-                </div>
-                <div class="form-group">
-                    <input type="password" class="nq-input" id="password-confirm" placeholder="Confirm password" autocomplete="new-password">
-                </div>
-                <p class="nq-text error-text" id="error" style="display: none;"></p>
+                <p class="nq-text error-text" id="error" style="display:none;"></p>
             </div>
             <div class="nq-card-footer">
-                <button class="nq-button-s" type="button" id="btn-back">Back</button>
-                <button class="nq-button light-blue" type="submit" id="btn-import">Import Wallet</button>
+                <button class="nq-button-s" id="btn-back">Back</button>
+                <button class="nq-button light-blue" id="btn-import">Import Wallet</button>
             </div>
-            </form>
         </div>
     `;
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#welcome'));
 
-    el.querySelector('#import-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const mnemonicInput = el.querySelector('#mnemonic');
-        const pwInput = el.querySelector('#password');
-        const confirmInput = el.querySelector('#password-confirm');
-        const errorEl = el.querySelector('#error');
-
-        const words = mnemonicInput.value.trim().split(/\s+/);
-        if (words.length !== 24) {
-            errorEl.textContent = 'Please enter exactly 24 words.';
-            errorEl.style.display = '';
-            return;
-        }
-
-        if (pwInput.value.length < 8) {
-            errorEl.textContent = 'Password must be at least 8 characters.';
-            errorEl.style.display = '';
-            return;
-        }
-
-        if (pwInput.value !== confirmInput.value) {
-            errorEl.textContent = 'Passwords do not match.';
-            errorEl.style.display = '';
-            return;
-        }
-
+    el.querySelector('#btn-import').addEventListener('click', async () => {
         const btn = el.querySelector('#btn-import');
+        const errorEl = el.querySelector('#error');
         btn.disabled = true;
-        btn.textContent = 'Importing...';
+        btn.textContent = 'Opening keyguard...';
+        errorEl.style.display = 'none';
 
         try {
-            await importWallet(words, pwInput.value);
-            // Clear sensitive inputs immediately after use
-            mnemonicInput.value = '';
-            pwInput.value = '';
-            confirmInput.value = '';
+            // Keyguard handles: word entry, validation, password entry
+            await importWallet();
             navigate('#dashboard');
         } catch (e) {
-            // Clear password fields on error (keep mnemonic for retry)
-            pwInput.value = '';
-            confirmInput.value = '';
-            console.error('Import failed:', e);
-            errorEl.textContent = 'Invalid recovery words. Please check and try again.';
-            errorEl.style.display = '';
+            if (e.message !== 'User cancelled') {
+                errorEl.textContent = 'Import failed. Please check your recovery words and try again.';
+                errorEl.style.display = '';
+            }
             btn.disabled = false;
             btn.textContent = 'Import Wallet';
         }

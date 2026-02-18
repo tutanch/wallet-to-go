@@ -1,6 +1,6 @@
 import { loadNimiq } from './nimiq.js';
 import { registerRoute, initRouter, navigate } from './router.js';
-import { hasKey } from './modules/keyguard-api.js';
+import { hasKey, keyguardReady } from './modules/keyguard-api.js';
 import { welcomeView } from './views/welcome-view.js';
 import { createView } from './views/create-view.js';
 import { importView } from './views/import-view.js';
@@ -10,9 +10,16 @@ import { receiveView } from './views/receive-view.js';
 import { historyView } from './views/history-view.js';
 import { settingsView } from './views/settings-view.js';
 
+// Register service worker for integrity-pinned caching.
+// Non-blocking — does not delay app startup.
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
 async function init() {
     try {
-        await loadNimiq();
+        // Load Nimiq WASM and wait for keyguard iframe in parallel
+        await Promise.all([loadNimiq(), keyguardReady]);
 
         registerRoute('#welcome', () => welcomeView());
         registerRoute('#create', () => createView());

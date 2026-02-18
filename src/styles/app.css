@@ -1,6 +1,140 @@
 /* ===================================
+   Nimiq Design Tokens
+   Replaces public/vendor/nimiq-style.min.css
+   =================================== */
+
+:root {
+    --nimiq-blue: #1F2348;
+    --nimiq-light-blue: #0582CA;
+    --nimiq-light-blue-darkened: #0071C3;
+    --nimiq-green: #21BCA5;
+    --nimiq-green-darkened: #20B29E;
+    --nimiq-red: #D94432;
+    --nimiq-white: #FFF;
+    --nimiq-card-bg: white;
+    --nimiq-ease: cubic-bezier(0.25, 0, 0, 1);
+    --nimiq-blue-bg: radial-gradient(100% 100% at bottom right, #260133, #1F2348);
+    --nimiq-light-blue-bg: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA);
+    --nimiq-light-blue-bg-darkened: radial-gradient(100% 100% at bottom right, #2355C4, #0071C3);
+    --nimiq-green-bg: radial-gradient(100% 100% at bottom right, #41A38E, #21BCA5);
+}
+
+html {
+    font-family: 'Muli', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        Oxygen-Sans, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Background utility */
+.nq-blue-bg {
+    background: #1F2348;
+    background-image: var(--nimiq-blue-bg);
+    color: white;
+}
+
+/* Card background */
+.nq-card {
+    background: var(--nimiq-card-bg, white);
+}
+
+/* Base button — colour and text */
+.nq-button {
+    background: #1F2348;
+    background-image: var(--nimiq-blue-bg);
+    color: white;
+    display: block;
+    text-align: center;
+    text-decoration: none;
+    font-family: inherit;
+    position: relative;
+}
+
+.nq-button.light-blue {
+    background: #0582CA;
+    background-image: var(--nimiq-light-blue-bg);
+}
+
+.nq-button.light-blue:hover {
+    background-image: var(--nimiq-light-blue-bg-darkened);
+}
+
+.nq-button.green {
+    background: #21BCA5;
+    background-image: var(--nimiq-green-bg);
+}
+
+.nq-button[disabled] {
+    background: rgba(31, 35, 72, 0.07);
+    background-image: none;
+    color: rgba(31, 35, 72, 0.3);
+    box-shadow: none;
+}
+
+/* Base small button */
+.nq-button-s {
+    display: inline-block;
+    font-family: inherit;
+    background-color: rgba(31, 35, 72, 0.07);
+    color: #1F2348;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+}
+
+/* Base input */
+.nq-input {
+    font-family: inherit;
+    font-size: inherit;
+    border: none;
+    box-shadow: inset 0 0 0 2px rgba(31, 35, 72, 0.1);
+    color: #1F2348;
+    background: transparent;
+    border-radius: 4px;
+    outline: 0;
+}
+
+.nq-input::placeholder {
+    color: rgba(31, 35, 72, 0.5);
+}
+
+/* Base typography */
+.nq-h1 {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+}
+
+.nq-text {
+    font-size: 15px;
+    line-height: 1.4;
+    color: rgba(31, 35, 72, 0.7);
+    margin: 0;
+}
+
+.nq-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.107em;
+    color: rgba(31, 35, 72, 0.7);
+    margin: 0;
+}
+
+.nq-link {
+    color: #0582CA;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.nq-link:hover {
+    text-decoration: underline;
+}
+
+/* ===================================
    Nimiq Wallet — Custom Styles
-   Overrides @nimiq/style framework
    =================================== */
 
 /* Reset */

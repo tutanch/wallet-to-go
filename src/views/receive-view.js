@@ -1,5 +1,6 @@
 import { navigate } from '../router.js';
 import { getStoredAddress } from '../modules/keyguard-api.js';
+import { renderQr } from '../lib/qr-encoder.js';
 
 export async function receiveView() {
     const address = await getStoredAddress();
@@ -51,15 +52,14 @@ export async function receiveView() {
         }
     });
 
-    // Generate real QR code using qr-creator
+    // Generate QR code using native encoder
     setTimeout(() => {
         const container = el.querySelector('#qr-container');
-        if (container && typeof QrCreator !== 'undefined') {
+        if (container) {
             const canvas = document.createElement('canvas');
-            QrCreator.render({
+            renderQr({
                 text: `nimiq:${address.replace(/ /g, '')}`,
                 radius: 0.4,
-                ecLevel: 'M',
                 fill: '#1F2348',
                 background: '#ffffff',
                 size: 200,

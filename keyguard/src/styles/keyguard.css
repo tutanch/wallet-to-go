@@ -1,0 +1,318 @@
+/* ===================================
+   Nimiq Keyguard — Standalone Styles
+   Does NOT depend on @nimiq/style.
+   =================================== */
+
+/* Nimiq color palette */
+:root {
+    --nq-blue: #1F2348;
+    --nq-light-blue: #0582CA;
+    --nq-green: #21bca5;
+    --nq-red: #d94432;
+    --nq-gold: #E9B213;
+    --nq-bg: #1F2348;
+    --text-primary: #1F2348;
+    --text-secondary: rgba(31, 35, 72, 0.6);
+    --text-hint: rgba(31, 35, 72, 0.35);
+    --border-color: rgba(31, 35, 72, 0.15);
+    --bg-subtle: rgba(31, 35, 72, 0.05);
+}
+
+/* Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    width: 100%;
+}
+
+body {
+    font-family: 'Muli', system-ui, -apple-system, sans-serif;
+    background: transparent;
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Keyguard container: full-screen overlay ---- */
+.keyguard-container {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(31, 35, 72, 0.85);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    padding: 16px;
+    z-index: 1;
+    animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ---- Card ---- */
+.keyguard-card {
+    background: white;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+/* ---- Header ---- */
+.keyguard-header {
+    padding: 28px 24px 12px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.keyguard-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    margin-bottom: 6px;
+}
+
+.keyguard-header p {
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+
+.countdown-text {
+    font-size: 12px;
+    color: var(--text-hint);
+    margin-top: 6px;
+}
+
+/* ---- Body ---- */
+.keyguard-body {
+    padding: 20px 24px;
+    flex: 1;
+}
+
+/* ---- Footer ---- */
+.keyguard-footer {
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* ---- Form groups ---- */
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* ---- Inputs ---- */
+.nq-input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+    font-size: 16px;
+    font-family: inherit;
+    transition: border-color 0.2s, background 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.nq-input::placeholder {
+    color: var(--text-hint);
+}
+
+.nq-input:focus {
+    outline: none;
+    border-color: var(--nq-light-blue);
+    background: white;
+}
+
+textarea.nq-input {
+    resize: vertical;
+    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 120px;
+}
+
+.mnemonic-input {
+    min-height: 100px;
+    word-spacing: 0.1em;
+}
+
+/* ---- Error text ---- */
+.error-text {
+    color: var(--nq-red);
+    font-size: 13px;
+    margin-top: 8px;
+    display: block;
+}
+
+/* ---- Buttons ---- */
+.btn-primary {
+    padding: 12px 24px;
+    background: var(--nq-light-blue);
+    color: white;
+    border: none;
+    border-radius: 500px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 12px rgba(5, 130, 202, 0.3);
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+.btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(5, 130, 202, 0.35);
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(5, 130, 202, 0.25);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary.danger {
+    background: var(--nq-red);
+    box-shadow: 0 4px 12px rgba(217, 68, 50, 0.3);
+}
+
+.btn-primary.danger:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(217, 68, 50, 0.35);
+}
+
+.btn-secondary {
+    padding: 8px 16px;
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 500px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+    min-height: 36px;
+    white-space: nowrap;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: rgba(31, 35, 72, 0.1);
+}
+
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ---- Mnemonic grid ---- */
+.mnemonic-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin: 12px 0;
+}
+
+@media (min-width: 400px) {
+    .mnemonic-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.mnemonic-word {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--bg-subtle);
+    border-radius: 8px;
+    font-size: 13px;
+    min-height: 38px;
+}
+
+.word-number {
+    color: var(--text-hint);
+    font-size: 11px;
+    min-width: 18px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.word-text {
+    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+/* ---- TX confirmation ---- */
+.tx-amount-large {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-top: 4px;
+    font-family: 'Fira Mono', 'Fira Code', monospace;
+}
+
+.tx-confirm-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 14px;
+}
+
+.tx-confirm-row:last-child {
+    border-bottom: none;
+}
+
+.tx-label {
+    color: var(--text-hint);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+    padding-top: 2px;
+}
+
+.tx-value {
+    font-family: 'Fira Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: right;
+    word-break: break-all;
+}
