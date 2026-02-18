@@ -22,8 +22,12 @@ const EXCLUDE = new Set([
     'scripts',
     'sw.js',        // Generated file — cannot self-verify
     'keyguard',     // Separate repo — not served by this origin
+    'batch-sender', // Standalone tool — not part of the wallet app
+    '.vscode',
+    '.keyguard-org',
     '.DS_Store',
     '.gitignore',
+    '.nojekyll',
     'README.md',
     '.claude',
 ]);
@@ -123,6 +127,13 @@ self.addEventListener('activate', (event) => {
 });
 
 // ── Fetch: cache-first with hash re-verification ─────────────────────────
+// Skip re-verification for large binary files (.wasm) that were already
+// verified at install time — hashing multi-MB files on every fetch adds
+// noticeable latency.
+const SKIP_REVERIFY = new Set(
+    Object.keys(FILE_HASHES).filter(p => p.endsWith('.wasm')),
+);
+
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
     const url = new URL(event.request.url);
@@ -138,6 +149,9 @@ self.addEventListener('fetch', (event) => {
         const cache = await caches.open(CACHE_NAME);
         const cached = await cache.match(event.request);
         if (cached) {
+            // Large binaries were verified at install time — trust the cache
+            if (SKIP_REVERIFY.has(relPath)) return cached;
+
             // Re-verify to detect cache poisoning
             const buf = await cached.clone().arrayBuffer();
             const hashBuf = await crypto.subtle.digest('SHA-256', buf);
