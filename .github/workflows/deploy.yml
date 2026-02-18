@@ -27,6 +27,7 @@ jobs:
         run: |
           sed -i "s|\[KEYGUARD_ORIGIN\]|https://n-keyguard.github.io|g" index.html
           sed -i "s|\[KEYGUARD_ORIGIN\]|https://n-keyguard.github.io|g" src/modules/keyguard-api.js
+          sed -i "s|\[KEYGUARD_ORIGIN\]|https://n-keyguard.github.io|g" src/modules/webauthn.js
 
       - name: Generate service worker with integrity hashes
         run: node scripts/generate-sw.js

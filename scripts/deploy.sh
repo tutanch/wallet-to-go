@@ -158,6 +158,7 @@ jobs:
         run: |
           sed -i "s|\[KEYGUARD_ORIGIN\]|${KEYGUARD_ORIGIN}|g" index.html
           sed -i "s|\[KEYGUARD_ORIGIN\]|${KEYGUARD_ORIGIN}|g" src/modules/keyguard-api.js
+          sed -i "s|\[KEYGUARD_ORIGIN\]|${KEYGUARD_ORIGIN}|g" src/modules/webauthn.js
 
       - name: Generate service worker with integrity hashes
         run: node scripts/generate-sw.js
