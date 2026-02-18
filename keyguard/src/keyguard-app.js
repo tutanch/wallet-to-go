@@ -253,21 +253,35 @@ function renderDeleteConfirm() {
         </div>`;
 }
 
-// ── WebAuthn helpers ──────────────────────────────────────────────────────
+// ── WebAuthn delegation ───────────────────────────────────────────────────
+// The sandboxed iframe cannot call navigator.credentials directly.
+// Instead, we send requests to the wallet origin and await its response.
 
-const WEBAUTHN_RP = { name: 'Nimiq Wallet' };
-
-function isWebAuthnAvailable() {
-    return !!(window.PublicKeyCredential && navigator.credentials);
+function requestWebAuthnFromWallet(action, params = {}) {
+    return new Promise((resolve, reject) => {
+        function onMessage(event) {
+            if (event.origin !== WALLET_ORIGIN) return;
+            if (event.data?.type !== 'webauthn-response') return;
+            window.removeEventListener('message', onMessage);
+            if (event.data.error) {
+                const err = new Error(event.data.error);
+                if (event.data.errorName) err.name = event.data.errorName;
+                reject(err);
+            } else {
+                resolve(event.data.result);
+            }
+        }
+        window.addEventListener('message', onMessage);
+        sendToWallet({ type: 'webauthn-request', action, ...params });
+    });
 }
 
 async function isPrfSupported() {
-    if (!isWebAuthnAvailable()) return false;
-    if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
-        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        if (!available) return false;
+    try {
+        return await requestWebAuthnFromWallet('isPrfSupported');
+    } catch (_) {
+        return false;
     }
-    return true;
 }
 
 function generatePrfSalt() {
@@ -275,70 +289,20 @@ function generatePrfSalt() {
 }
 
 async function createWebAuthnCredential(userId, userName, prfSalt) {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-
-    const credential = await navigator.credentials.create({
-        publicKey: {
-            rp: WEBAUTHN_RP,
-            user: {
-                id: userId,
-                name: userName,
-                displayName: 'Nimiq Wallet',
-            },
-            challenge,
-            pubKeyCredParams: [
-                { alg: -7, type: 'public-key' },   // ES256
-                { alg: -257, type: 'public-key' },  // RS256
-            ],
-            authenticatorSelection: {
-                authenticatorAttachment: 'platform',
-                userVerification: 'required',
-                residentKey: 'preferred',
-            },
-            extensions: {
-                prf: { eval: { first: prfSalt } },
-            },
-        },
+    return await requestWebAuthnFromWallet('create', {
+        userId: Array.from(userId),
+        userName,
+        prfSalt: Array.from(prfSalt),
     });
-
-    const extResults = credential.getClientExtensionResults();
-    if (!extResults.prf?.enabled) {
-        throw new Error('PRF_NOT_SUPPORTED');
-    }
-
-    let prfOutput = extResults.prf?.results?.first;
-    if (!prfOutput) {
-        // Some authenticators only return PRF output on get(), not create()
-        prfOutput = await getWebAuthnPrfKey(new Uint8Array(credential.rawId), prfSalt);
-    }
-
-    return {
-        credentialId: new Uint8Array(credential.rawId),
-        prfKey: new Uint8Array(prfOutput),
-    };
+    // Returns { credentialId: number[], prfKey: number[] }
 }
 
 async function getWebAuthnPrfKey(credentialId, prfSalt) {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-
-    const assertion = await navigator.credentials.get({
-        publicKey: {
-            challenge,
-            allowCredentials: [{
-                type: 'public-key',
-                id: credentialId,
-            }],
-            userVerification: 'required',
-            extensions: {
-                prf: { eval: { first: prfSalt } },
-            },
-        },
+    return await requestWebAuthnFromWallet('get', {
+        credentialId: Array.from(new Uint8Array(credentialId)),
+        prfSalt: Array.from(new Uint8Array(prfSalt)),
     });
-
-    const extResults = assertion.getClientExtensionResults();
-    const prfResult = extResults.prf?.results?.first;
-    if (!prfResult) throw new Error('PRF output not available');
-    return new Uint8Array(prfResult);
+    // Returns number[] (PRF key bytes)
 }
 
 // ── WebAuthn UI templates ─────────────────────────────────────────────────

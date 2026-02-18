@@ -1,6 +1,7 @@
 import { loadNimiq } from './nimiq.js';
 import { registerRoute, initRouter, navigate } from './router.js';
 import { hasKey, keyguardReady } from './modules/keyguard-api.js';
+import './modules/webauthn.js'; // Register WebAuthn delegation listener for keyguard iframe
 import { welcomeView } from './views/welcome-view.js';
 import { createView } from './views/create-view.js';
 import { importView } from './views/import-view.js';
