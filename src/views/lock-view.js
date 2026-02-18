@@ -42,10 +42,12 @@ export function lockView() {
         } catch (e) {
             btn.disabled = false;
             btn.textContent = 'Login with Passkey';
-            if (e.name !== 'NotAllowedError') {
-                errorEl.textContent = 'Authentication failed. Please try again.';
-                errorEl.style.display = '';
+            if (e.name === 'NotAllowedError') {
+                errorEl.textContent = 'No passkey found or cancelled. You can set one up in Settings after logging in with your password.';
+            } else {
+                errorEl.textContent = 'Authentication failed: ' + (e.message || e.name);
             }
+            errorEl.style.display = '';
         }
     });
 
