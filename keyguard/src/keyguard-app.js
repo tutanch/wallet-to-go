@@ -532,6 +532,12 @@ window.addEventListener('message', async (event) => {
     // Strict origin validation — reject anything not from the wallet
     if (event.origin !== WALLET_ORIGIN) return;
 
+    // Ping/pong: wallet sends this to recover if it missed the initial 'ready'
+    if (event.data?.type === 'ping') {
+        try { event.source.postMessage({ type: 'ready' }, WALLET_ORIGIN); } catch (_) {}
+        return;
+    }
+
     const { sessionId, command, args } = event.data;
 
     // Transparent passthroughs: no UI, immediate response

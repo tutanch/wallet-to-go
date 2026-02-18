@@ -27,6 +27,17 @@ export const keyguardReady = new Promise((resolve) => {
             resolve();
         }
     });
+
+    // Ping the keyguard so it re-sends 'ready' if it already loaded before
+    // this listener was registered (race condition: cached iframe loads fast).
+    function ping() {
+        const frame = document.getElementById('keyguard-frame');
+        if (!frame) return;
+        try { frame.contentWindow.postMessage({ type: 'ping' }, KEYGUARD_ORIGIN); } catch (_) {}
+    }
+    ping(); // cover the already-loaded case
+    const frame = document.getElementById('keyguard-frame');
+    if (frame) frame.addEventListener('load', ping); // cover the still-loading case
 });
 
 // ── Session tracking ───────────────────────────────────────────────────────

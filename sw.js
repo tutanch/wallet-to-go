@@ -1,12 +1,12 @@
 // AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
-// Generated from git SHA: 4b7dbee
+// Generated from git SHA: 225d54a
 //
 // Security guarantee: if any file on the server has a different hash than
 // what is listed here, the SW install fails and the previous known-good SW
 // continues serving users. Tampered files cannot reach returning visitors.
 
-const CACHE_NAME = 'nimiq-wallet-v4b7dbee';
+const CACHE_NAME = 'nimiq-wallet-v225d54a';
 
 // SHA-256 hashes of every file. Computed at deploy time.
 const FILE_HASHES = {
@@ -33,7 +33,7 @@ const FILE_HASHES = {
     "src/keyguard-worker.js": "sha256-lhBHSpaJ1zPoFGvf5D+gkSzCdQxwTu/wH2+2HIY4PCw=",
     "src/lib/qr-encoder.js": "sha256-W3/yGOV65+pBprZTS9j382f7OMVkXsqN6CogoBNZry8=",
     "src/main.js": "sha256-Wr7243RYyTkC2uI4BLaf06etE++KRP6EnWHis/y6J2M=",
-    "src/modules/keyguard-api.js": "sha256-sbmLnVVNvjy0I7b4nlMZgMDtEiZcbCUt9s1GVnW5RGI=",
+    "src/modules/keyguard-api.js": "sha256-EunFHzzhCBikhwOGFToWv85v9PJ6NZN6SuthoSvKNw0=",
     "src/modules/network-client.js": "sha256-0UzSAGWMssZ+cEtsjehmkGLlsfDhfc8v9kf8m/zdc4w=",
     "src/nimiq.js": "sha256-AK7iYfQuGDUfl5b1wdB4Pp3VNjgwSMl/fZxFWjabDyg=",
     "src/router.js": "sha256-e1N17L2tRoghYCLkUu3vuW8tKmMiRX8t7HOJuYZzPAo=",
