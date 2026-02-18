@@ -148,7 +148,7 @@ function renderPasswordForm({ title, subtitle, isNew }) {
                     <div class="keyguard-body">
                         <div class="form-group">
                             <input type="password" class="nq-input" id="password" placeholder="Password"
-                                autocomplete="${isNew ? 'new-password' : 'current-password'}" autofocus>
+                                autocomplete="${isNew ? 'new-password' : 'current-password'}">
                         </div>
                         ${isNew ? `
                         <div class="form-group">
@@ -180,7 +180,7 @@ function renderWordEntry() {
                     <div class="keyguard-body">
                         <div class="form-group">
                             <textarea class="nq-input mnemonic-input" id="mnemonic" rows="5"
-                                placeholder="word1 word2 word3 ... word24" autofocus></textarea>
+                                placeholder="word1 word2 word3 ... word24"></textarea>
                         </div>
                         <p class="error-text" id="error" style="display:none;"></p>
                     </div>
@@ -236,7 +236,7 @@ function renderDeleteConfirm() {
                     <div class="keyguard-body">
                         <div class="form-group">
                             <input type="password" class="nq-input" id="password"
-                                placeholder="Enter your password" autocomplete="current-password" autofocus>
+                                placeholder="Enter your password" autocomplete="current-password">
                         </div>
                         <div class="form-group">
                             <input type="text" class="nq-input" id="confirm-text"

@@ -85,11 +85,23 @@ window.addEventListener('message', (event) => {
 
 // ── Core send function ─────────────────────────────────────────────────────
 
+// Commands that show keyguard UI — iframe must be visible for user interaction.
+const UI_COMMANDS = new Set([
+    'createWallet', 'importWallet', 'signTransaction', 'exportMnemonic',
+    'deleteWallet', 'unlock', 'restoreWithPasskey', 'registerWebAuthn', 'removeWebAuthn',
+]);
+
 function call(command, args) {
     return new Promise((resolve, reject) => {
         const id = ++sessionId;
         pending.set(id, { resolve, reject });
-        getFrame().contentWindow.postMessage(
+        const frame = getFrame();
+        // Show the iframe immediately for UI commands instead of waiting
+        // for the keyguard's round-trip 'show' message (which can be unreliable).
+        if (UI_COMMANDS.has(command)) {
+            frame.style.display = '';
+        }
+        frame.contentWindow.postMessage(
             { sessionId: id, command, args: args || {} },
             KEYGUARD_ORIGIN,
         );
