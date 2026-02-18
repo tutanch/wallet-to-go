@@ -1,17 +1,20 @@
 // AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
-// Generated from git SHA: ca85305
+// Generated from git SHA: e501876
 //
 // Security guarantee: if any file on the server has a different hash than
 // what is listed here, the SW install fails and the previous known-good SW
 // continues serving users. Tampered files cannot reach returning visitors.
 
-const CACHE_NAME = 'nimiq-wallet-vca85305';
+const CACHE_NAME = 'nimiq-wallet-ve501876';
 
 // SHA-256 hashes of every file. Computed at deploy time.
 const FILE_HASHES = {
     ".keyguard-org": "sha256-9X28ZHz2ePolAv7r50i7H0DHyUo5Sr874Tyc2V7TEVo=",
     ".vscode/settings.json": "sha256-QbBTpp9X0oJiTMzLxE7xle4Tdw5wN89Z8iz/ycdJ9CI=",
+    "batch-sender/Dockerfile": "sha256-TWa45rqzSpzcpt6l4+yi/hH8aFiericz2u5aIwJkjZA=",
+    "batch-sender/docker-compose.yml": "sha256-661JvMlFOBPWyBjn57TlfNi5BfsVsubs0eH9tMzH+bE=",
+    "batch-sender/index.html": "sha256-boImfJkD5G4oAWzL7St9sPA4xqkPWUfmo+OVYi1rvWU=",
     "index.html": "sha256-er5PFRUNcq9BktqgaMfE2sWTSgfFEgQgdm7UTIxFCTk=",
     "lib/nimiq-core/launcher/browser/client-proxy.mjs": "sha256-Sb8Y+9RMqbO/izMVCPktL+SAh6J8fQA0Eg/H/A04OVE=",
     "lib/nimiq-core/launcher/browser/cryptoutils-worker-proxy.mjs": "sha256-lVzO7i4UTv4RT+wjriAuAQ2ubt0S74AtDSOfs2/fU38=",
@@ -29,24 +32,25 @@ const FILE_HASHES = {
     "lib/nimiq-core/web/worker-wasm/index_bg.wasm": "sha256-rlCrnJlwdAcuCVQil/uIPrWm7o2c6ATG77ijLMLzKAE=",
     "lib/nimiq-core/web/worker.js": "sha256-BDbSXdVBWbEGx9L1830XEP0CncpgoGeJiiCokhinTRw=",
     "public/favicon.svg": "sha256-pNfQluJuJZLYXltHVbRpTKfWU06D+nY7cMYom6JLwCw=",
-    "src/config.js": "sha256-GoostTPk2wq7BJlYFLGIwmXoKttl/NqXHte/cZX+ikY=",
-    "src/keyguard-worker.js": "sha256-lhBHSpaJ1zPoFGvf5D+gkSzCdQxwTu/wH2+2HIY4PCw=",
+    "src/config.js": "sha256-mnQT+4kh/bKuBIT1No+K/LhKeIxIiji87zy9VUR5z38=",
     "src/lib/qr-encoder.js": "sha256-W3/yGOV65+pBprZTS9j382f7OMVkXsqN6CogoBNZry8=",
-    "src/main.js": "sha256-Wr7243RYyTkC2uI4BLaf06etE++KRP6EnWHis/y6J2M=",
-    "src/modules/keyguard-api.js": "sha256-b2RGqg56k67aKzLfQ6aCzN8h4+Dmv5vZfaJ9+pku9PA=",
+    "src/main.js": "sha256-q6q0d2E3z3lHC5lKmNMYGTnkcTsS7qneRkG4CWjvqYU=",
+    "src/modules/keyguard-api.js": "sha256-h0wABvASw/9PypNmmP1CjRKemMnII4bvLZOyuqrJFtA=",
     "src/modules/network-client.js": "sha256-0UzSAGWMssZ+cEtsjehmkGLlsfDhfc8v9kf8m/zdc4w=",
+    "src/modules/webauthn.js": "sha256-38Q3Rfi/1GWoTwdv4YvPp5SrPM368AzxMNdso+HJTKU=",
     "src/nimiq.js": "sha256-AK7iYfQuGDUfl5b1wdB4Pp3VNjgwSMl/fZxFWjabDyg=",
-    "src/router.js": "sha256-e1N17L2tRoghYCLkUu3vuW8tKmMiRX8t7HOJuYZzPAo=",
+    "src/router.js": "sha256-V0p8N2tFF5+GX55/RFzs+cs1kjL62uO2EkMMjg3gI3o=",
     "src/security-init.js": "sha256-ohahumo/WhLevCONL0T6KN4KMGZ3twcXleQBIgtdLEs=",
-    "src/styles/app.css": "sha256-XDiKe7Y58ZzxL8FXJV4F/MJj/c43AcrF4wxiu+ODa9Q=",
+    "src/styles/app.css": "sha256-7bLsXh5c4kNz9sNLGcOlQwhz2j/37VzWliOOp947+xM=",
     "src/views/create-view.js": "sha256-D1RaBIoMNxhlJlGFN+LQepngZ3nyAOn/d1NojyA/Nj4=",
-    "src/views/dashboard-view.js": "sha256-vyY0EHguisTZbP45VtfgS+9KIXGQhBZFifUW2MZ9maQ=",
+    "src/views/dashboard-view.js": "sha256-zOGXsKlM06pkaq2C4aqPrqejw8c0N8hIefBfY15G3gc=",
     "src/views/history-view.js": "sha256-eZN7532KwA2Fs3qwNV8yvQzzWxtdIpOZ2DRQsh5vF9A=",
     "src/views/import-view.js": "sha256-WoebbUMOUo5vN1hr9KuZErV1S5/mb3nNVxE1W71S7hQ=",
-    "src/views/receive-view.js": "sha256-+006PcCwGyUmSOJ1MtISkZdoHuBkDdrko0yDyg92/W0=",
-    "src/views/send-view.js": "sha256-bNP1SrK7qjOAGYvwgY9TNJhdlhBixl7e7Et4ZEd73sU=",
-    "src/views/settings-view.js": "sha256-a4v+lARgETzDAmPWm6KqayaXr/3VM0PLiUHzIHqxD8w=",
-    "src/views/welcome-view.js": "sha256-gJSrhTf4EKvgHchUnTKxriA4L1utP3yolwjCa1PCdFM="
+    "src/views/lock-view.js": "sha256-4LGkkuZntrMWbnDVQw004HlGFPCFTFIVEqU/x8p9feI=",
+    "src/views/receive-view.js": "sha256-/EKIYFNW11Lp1gNyL5w+Hz/EPuCnH7RjIxKE6iiFtBQ=",
+    "src/views/send-view.js": "sha256-XE13xlgh+Tqr+CqmIEEtRndOmiIa1uS5vFpXo99Ey04=",
+    "src/views/settings-view.js": "sha256-G5KBusgpAXtTSfNh8xEXztzF6Xhv1OEVKWr5oW4EyJg=",
+    "src/views/welcome-view.js": "sha256-FE1oq6NVCfidiy4Uz9nnHhGX+QZjecX4mApdyq8GiiE="
 };
 
 // Derive path prefix from SW's own URL.

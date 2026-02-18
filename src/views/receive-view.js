@@ -21,7 +21,7 @@ export async function receiveView() {
             <div class="nq-card-body receive-body">
                 <div id="qr-container"></div>
                 <div class="address-display-large" id="address-copy" title="Click to copy">
-                    <span class="address-text-large">${address}</span>
+                    <span class="address-text-large" id="address-text"></span>
                 </div>
                 <button class="nq-button-s" id="btn-copy">Copy Address</button>
             </div>
@@ -30,6 +30,8 @@ export async function receiveView() {
             </div>
         </div>
     `;
+
+    el.querySelector('#address-text').textContent = address;
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 

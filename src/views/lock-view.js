@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { unlock, hasPassword } from '../modules/keyguard-api.js';
+import { unlock, hasPassword, restoreWithPasskey } from '../modules/keyguard-api.js';
 
 export function lockView() {
     const el = document.createElement('div');
@@ -33,8 +33,8 @@ export function lockView() {
 
     const errorEl = el.querySelector('#lock-error');
 
-    // Passkey login — uses discoverable credentials so the browser finds any
-    // matching passkey in the keychain, regardless of what the keyguard knows.
+    // Passkey login — routes through keyguard's restoreWithPasskey flow which
+    // verifies the passkey's PRF output can derive a valid wallet.
     el.querySelector('#btn-passkey').addEventListener('click', async () => {
         const btn = el.querySelector('#btn-passkey');
         btn.disabled = true;
@@ -42,22 +42,15 @@ export function lockView() {
         errorEl.style.display = 'none';
 
         try {
-            await navigator.credentials.get({
-                publicKey: {
-                    challenge: crypto.getRandomValues(new Uint8Array(32)),
-                    userVerification: 'required',
-                },
-            });
+            await restoreWithPasskey();
             navigate('#dashboard');
         } catch (e) {
             btn.disabled = false;
             btn.textContent = 'Login with Passkey';
-            if (e.name === 'NotAllowedError') {
-                errorEl.textContent = 'No passkey found or cancelled. You can set one up in Settings after logging in with your password.';
-            } else {
-                errorEl.textContent = 'Authentication failed: ' + (e.message || e.name);
+            if (e.message !== 'User cancelled') {
+                errorEl.textContent = 'Passkey authentication failed. Please try again.';
+                errorEl.style.display = '';
             }
-            errorEl.style.display = '';
         }
     });
 

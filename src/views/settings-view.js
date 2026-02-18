@@ -23,7 +23,7 @@ export function settingsView() {
                     </div>
                     ${currentNetwork === 'test' ? `
                         <p class="nq-text faucet-link">
-                            <a class="nq-link" href="${NETWORKS.test.faucetUrl}" target="_blank" rel="noopener">Get test NIM from faucet</a>
+                            <a class="nq-link" id="faucet-link" target="_blank" rel="noopener">Get test NIM from faucet</a>
                         </p>
                     ` : ''}
                 </div>
@@ -54,6 +54,9 @@ export function settingsView() {
             </div>
         </div>
     `;
+
+    const faucetLink = el.querySelector('#faucet-link');
+    if (faucetLink) faucetLink.href = NETWORKS.test.faucetUrl;
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 

@@ -19,10 +19,15 @@ function getFrame() {
 // Resolves when the keyguard iframe sends { type: 'ready' }.
 // main.js awaits this (in parallel with loadNimiq()) before making any calls.
 
-export const keyguardReady = new Promise((resolve) => {
+export const keyguardReady = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+        reject(new Error('Keyguard iframe did not load within 15 seconds'));
+    }, 15000);
+
     window.addEventListener('message', function onReady(event) {
         if (event.origin !== KEYGUARD_ORIGIN) return;
         if (event.data?.type === 'ready') {
+            clearTimeout(timeout);
             window.removeEventListener('message', onReady);
             resolve();
         }
@@ -91,12 +96,20 @@ const UI_COMMANDS = new Set([
     'deleteWallet', 'unlock', 'restoreWithPasskey', 'registerWebAuthn', 'removeWebAuthn',
 ]);
 
-function call(command, args) {
+function call(command, args, timeoutMs = 120000) {
     return new Promise((resolve, reject) => {
         const id = ++sessionId;
-        pending.set(id, { resolve, reject });
+        const timer = setTimeout(() => {
+            pending.delete(id);
+            reject(new Error(`Keyguard command '${command}' timed out`));
+        }, timeoutMs);
+        pending.set(id, {
+            resolve: (v) => { clearTimeout(timer); resolve(v); },
+            reject: (e) => { clearTimeout(timer); reject(e); },
+        });
         const frame = getFrame();
         if (!frame.contentWindow) {
+            clearTimeout(timer);
             pending.delete(id);
             reject(new Error('Keyguard iframe blocked — disable Brave Shield or add this site to its exceptions'));
             return;
@@ -117,12 +130,12 @@ function call(command, args) {
 
 /** Check if a wallet exists. Transparent passthrough — no UI shown. */
 export function hasKey() {
-    return call('hasKey');
+    return call('hasKey', null, 15000);
 }
 
 /** Get stored wallet address. Transparent passthrough — no UI shown. */
 export function getStoredAddress() {
-    return call('getStoredAddress');
+    return call('getStoredAddress', null, 15000);
 }
 
 /**
@@ -195,12 +208,12 @@ export function restoreWithPasskey() {
 
 /** Check if WebAuthn is configured. Transparent passthrough — no UI shown. */
 export function getWebAuthnInfo() {
-    return call('getWebAuthnInfo');
+    return call('getWebAuthnInfo', null, 15000);
 }
 
 /** Check if a password is set. Transparent passthrough — no UI shown. */
 export function hasPassword() {
-    return call('hasPassword');
+    return call('hasPassword', null, 15000);
 }
 
 /**

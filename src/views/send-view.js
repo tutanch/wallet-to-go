@@ -63,7 +63,8 @@ export async function sendView() {
 
         // Validate inputs
         const recipientValue = el.querySelector('#recipient').value.trim();
-        const amountValue = parseFloat(el.querySelector('#amount').value);
+        const amountRaw = el.querySelector('#amount').value.trim();
+        const valueLuna = nimToLuna(amountRaw);
 
         if (!recipientValue) {
             errorEl.textContent = 'Please enter a recipient address.';
@@ -86,7 +87,7 @@ export async function sendView() {
             // Allow proceeding — just warn, don't block
         }
 
-        if (!amountValue || amountValue <= 0) {
+        if (isNaN(valueLuna) || valueLuna <= 0) {
             errorEl.textContent = 'Please enter a valid amount.';
             errorEl.style.display = '';
             return;
@@ -107,7 +108,6 @@ export async function sendView() {
         try {
             const feeValue = parseInt(el.querySelector('#fee').value) || 0;
             const messageValue = el.querySelector('#message').value;
-            const valueLuna = nimToLuna(amountValue);
             const validityStartHeight = await network.getHeadHeight();
             const networkId = await network.getNetworkId();
 

@@ -19,79 +19,113 @@ export async function dashboardView() {
     const el = document.createElement('div');
     el.className = 'view-container';
 
-    function render() {
-        const networkLabel = getSelectedNetwork() === 'main' ? 'Mainnet' : 'Testnet';
+    // ── Build skeleton once ────────────────────────────────────────
+    const networkLabel = getSelectedNetwork() === 'main' ? 'Mainnet' : 'Testnet';
+
+    el.innerHTML = `
+        <div class="nq-card dashboard-card">
+            <div class="nq-card-header">
+                <div class="status-bar">
+                    <span class="consensus-indicator" id="d-consensus"></span>
+                    <span class="network-label">${networkLabel}</span>
+                    <span class="block-height" id="d-block-height" style="display:none;"></span>
+                </div>
+                <div class="balance-display">
+                    <span class="balance-amount nq-h1" id="d-balance">...</span>
+                    <span class="balance-currency">NIM</span>
+                </div>
+                <div class="address-display" id="address-copy" title="Click to copy">
+                    <span class="address-text" id="d-address"></span>
+                </div>
+            </div>
+            <div class="nq-card-body">
+                <div class="action-buttons">
+                    <button class="nq-button light-blue" id="btn-send">Send</button>
+                    <button class="nq-button green" id="btn-receive">Receive</button>
+                </div>
+                <div class="recent-txs">
+                    <div class="section-header">
+                        <h2 class="nq-label">Recent Transactions</h2>
+                        <a class="nq-link" id="btn-all-txs" style="display:none;">View All</a>
+                    </div>
+                    <div class="tx-list" id="d-tx-list"></div>
+                </div>
+            </div>
+            <div class="nq-card-footer">
+                <button class="nq-button-s" id="btn-settings">Settings</button>
+            </div>
+        </div>
+    `;
+
+    // ── Cache DOM references ───────────────────────────────────────
+    const $consensus = el.querySelector('#d-consensus');
+    const $balance = el.querySelector('#d-balance');
+    const $blockHeight = el.querySelector('#d-block-height');
+    const $address = el.querySelector('#d-address');
+    const $txList = el.querySelector('#d-tx-list');
+    const $btnAllTxs = el.querySelector('#btn-all-txs');
+
+    // Set static address via textContent (XSS-safe)
+    $address.textContent = address;
+
+    // ── Attach event listeners once ────────────────────────────────
+    el.querySelector('#address-copy').addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(address);
+            const original = $address.textContent;
+            $address.textContent = 'Copied!';
+            setTimeout(() => { $address.textContent = original; }, 1500);
+        } catch {
+            // Clipboard API may fail without HTTPS or permissions
+        }
+    });
+
+    el.querySelector('#btn-send').addEventListener('click', () => navigate('#send'));
+    el.querySelector('#btn-receive').addEventListener('click', () => navigate('#receive'));
+    el.querySelector('#btn-settings').addEventListener('click', () => navigate('#settings'));
+    $btnAllTxs.addEventListener('click', () => navigate('#history'));
+
+    // ── Targeted update function ───────────────────────────────────
+    function update() {
+        // Consensus indicator
         const consensusClass = consensus === 'established' ? 'consensus-ok' : 'consensus-syncing';
         const consensusText = consensus === 'established' ? 'Connected' :
                               consensus === 'syncing' ? 'Syncing...' : 'Connecting...';
+        $consensus.className = `consensus-indicator ${consensusClass}`;
+        $consensus.textContent = consensusText;
 
-        el.innerHTML = `
-            <div class="nq-card dashboard-card">
-                <div class="nq-card-header">
-                    <div class="status-bar">
-                        <span class="consensus-indicator ${consensusClass}">${consensusText}</span>
-                        <span class="network-label">${networkLabel}</span>
-                        ${headHeight ? `<span class="block-height">Block #${headHeight.toLocaleString()}</span>` : ''}
-                    </div>
-                    <div class="balance-display">
-                        <span class="balance-amount nq-h1">${balance !== null ? formatNim(balance) : '...'}</span>
-                        <span class="balance-currency">NIM</span>
-                    </div>
-                    <div class="address-display" id="address-copy" title="Click to copy">
-                        <span class="address-text">${address}</span>
-                    </div>
-                </div>
-                <div class="nq-card-body">
-                    <div class="action-buttons">
-                        <button class="nq-button light-blue" id="btn-send">Send</button>
-                        <button class="nq-button green" id="btn-receive">Receive</button>
-                    </div>
-                    <div class="recent-txs">
-                        <div class="section-header">
-                            <h2 class="nq-label">Recent Transactions</h2>
-                            ${recentTxs.length > 0 ? '<a class="nq-link" id="btn-all-txs">View All</a>' : ''}
-                        </div>
-                        <div class="tx-list" id="tx-list">
-                            ${recentTxs.length === 0
-                                ? `<p class="nq-text no-txs">${consensus === 'established' ? 'No transactions yet' : 'Waiting for consensus...'}</p>`
-                                : ''}
-                        </div>
-                    </div>
-                </div>
-                <div class="nq-card-footer">
-                    <button class="nq-button-s" id="btn-settings">Settings</button>
-                </div>
-            </div>
-        `;
+        // Balance
+        $balance.textContent = balance !== null ? formatNim(balance) : '...';
 
-        const txList = el.querySelector('#tx-list');
-        recentTxs.slice(0, 5).forEach(tx => {
-            txList.appendChild(renderTxItem(tx, address));
-        });
+        // Block height
+        if (headHeight) {
+            $blockHeight.textContent = `Block #${headHeight.toLocaleString()}`;
+            $blockHeight.style.display = '';
+        } else {
+            $blockHeight.style.display = 'none';
+        }
 
-        el.querySelector('#address-copy').addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(address);
-                const addressEl = el.querySelector('.address-text');
-                const original = addressEl.textContent;
-                addressEl.textContent = 'Copied!';
-                setTimeout(() => { addressEl.textContent = original; }, 1500);
-            } catch {
-                // Clipboard API may fail without HTTPS or permissions
-            }
-        });
-
-        el.querySelector('#btn-send').addEventListener('click', () => navigate('#send'));
-        el.querySelector('#btn-receive').addEventListener('click', () => navigate('#receive'));
-        el.querySelector('#btn-settings').addEventListener('click', () => navigate('#settings'));
-
-        const btnAllTxs = el.querySelector('#btn-all-txs');
-        if (btnAllTxs) btnAllTxs.addEventListener('click', () => navigate('#history'));
+        // Transaction list — rebuild only the tx list, not the entire card
+        $txList.innerHTML = '';
+        if (recentTxs.length > 0) {
+            recentTxs.slice(0, 5).forEach(tx => {
+                $txList.appendChild(renderTxItem(tx, address));
+            });
+            $btnAllTxs.style.display = '';
+        } else {
+            const placeholder = document.createElement('p');
+            placeholder.className = 'nq-text no-txs';
+            placeholder.textContent = consensus === 'established'
+                ? 'No transactions yet'
+                : 'Waiting for consensus...';
+            $txList.appendChild(placeholder);
+            $btnAllTxs.style.display = 'none';
+        }
     }
 
-    render();
+    update();
 
-    // Start network connection
+    // ── Network callbacks ──────────────────────────────────────────
     await network.connect();
 
     // Fetch balance + history + initial head height on consensus established
@@ -110,7 +144,7 @@ export async function dashboardView() {
         if (state === 'established') {
             await fetchFullData();
         }
-        render();
+        update();
     });
 
     // If consensus is already established (e.g. navigating back from another view),
@@ -118,7 +152,7 @@ export async function dashboardView() {
     if (await network.isConsensusEstablished()) {
         consensus = 'established';
         await fetchFullData();
-        render();
+        update();
     }
 
     // Head changes update block height directly from the event —
@@ -129,7 +163,7 @@ export async function dashboardView() {
             const block = await network.getBlock(hash);
             if (block) {
                 headHeight = block.height;
-                render();
+                update();
             }
         } catch (e) {
             console.error('Failed to get block:', e);
@@ -143,7 +177,7 @@ export async function dashboardView() {
     network.addTransactionListener(async (tx) => {
         recentTxs = [tx, ...recentTxs].slice(0, 10);
         try { balance = await network.getBalance(address); } catch (_) {}
-        render();
+        update();
     }, [address]).then(remove => {
         if (cleaned) {
             // View was already cleaned up before listener resolved — remove immediately

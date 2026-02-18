@@ -1345,6 +1345,9 @@ window.addEventListener('message', async (event) => {
     }
 
     // UI flows — establish session context
+    if (currentSession) {
+        rejectSession('Interrupted by new session');
+    }
     currentSession = {
         source: event.source,
         origin: WALLET_ORIGIN,

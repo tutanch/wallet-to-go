@@ -60,7 +60,9 @@ export function lunaToNim(luna) {
 
 // Parse NIM string to luna using integer math to avoid floating-point errors
 export function nimToLuna(nim) {
-    const str = String(nim);
+    if (nim == null || nim === '') return NaN;
+    const str = String(nim).trim();
+    if (!/^-?(\d+\.?\d*|\d*\.\d+)$/.test(str)) return NaN;
     const isNegative = str.startsWith('-');
     const abs = isNegative ? str.slice(1) : str;
     const parts = abs.split('.');
