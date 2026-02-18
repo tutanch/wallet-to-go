@@ -208,20 +208,42 @@ const handlers = {
         };
     },
 
-    async saveWallet({ password }) {
+    async saveWallet({ password, prfKey, credentialId, prfSalt }) {
         await ensureWasm();
         if (!pendingEntropy) throw new Error('No pending wallet to save');
+        if (!password && !prfKey) throw new Error('At least one auth method required');
 
-        const passwordBuf = new TextEncoder().encode(password);
         const address = deriveAddress(pendingEntropy);
         const id = BufferUtils.toBase64(Hash.computeBlake2b(pendingEntropy.serialize()));
-        const encrypted = await Secret.exportEncrypted(pendingEntropy, passwordBuf);
 
         const record = {
             id,
-            secret: new Uint8Array(encrypted),
             defaultAddress: address.serialize(),
         };
+
+        // Password encryption (optional)
+        if (password) {
+            const passwordBuf = new TextEncoder().encode(password);
+            record.secret = new Uint8Array(await Secret.exportEncrypted(pendingEntropy, passwordBuf));
+        }
+
+        // Passkey encryption (optional)
+        if (prfKey) {
+            const entropyBytes = pendingEntropy.serialize();
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const aesKey = await crypto.subtle.importKey(
+                'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
+            );
+            const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, aesKey, entropyBytes,
+            );
+            record.webauthn = {
+                credentialId: new Uint8Array(credentialId),
+                prfSalt: new Uint8Array(prfSalt),
+                encryptedSecret: new Uint8Array(ciphertext),
+                iv,
+            };
+        }
 
         const db = await connectDB();
         const tx = db.transaction([STORE_NAME], 'readwrite');
@@ -238,21 +260,44 @@ const handlers = {
         return { id };
     },
 
-    async importWallet({ words, password }) {
+    async importWallet({ words, password, prfKey, credentialId, prfSalt }) {
         await ensureWasm();
+        if (!password && !prfKey) throw new Error('At least one auth method required');
+
         const wordArray = typeof words === 'string' ? words.trim().split(/\s+/) : words;
         const entropy = MnemonicUtils.mnemonicToEntropy(wordArray);
 
-        const passwordBuf = new TextEncoder().encode(password);
         const address = deriveAddress(entropy);
         const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
-        const encrypted = await Secret.exportEncrypted(entropy, passwordBuf);
 
         const record = {
             id,
-            secret: new Uint8Array(encrypted),
             defaultAddress: address.serialize(),
         };
+
+        // Password encryption (optional)
+        if (password) {
+            const passwordBuf = new TextEncoder().encode(password);
+            record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
+        }
+
+        // Passkey encryption (optional)
+        if (prfKey) {
+            const entropyBytes = entropy.serialize();
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const aesKey = await crypto.subtle.importKey(
+                'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
+            );
+            const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, aesKey, entropyBytes,
+            );
+            record.webauthn = {
+                credentialId: new Uint8Array(credentialId),
+                prfSalt: new Uint8Array(prfSalt),
+                encryptedSecret: new Uint8Array(ciphertext),
+                iv,
+            };
+        }
 
         const db = await connectDB();
         const tx = db.transaction([STORE_NAME], 'readwrite');
@@ -444,6 +489,11 @@ const handlers = {
         };
     },
 
+    async hasPassword() {
+        const record = await getRecord();
+        return !!(record && record.secret);
+    },
+
     async hasPasskeyBackup() {
         const backup = await getPasskeyBackupRecord();
         if (!backup) return { hasBackup: false };
@@ -488,9 +538,18 @@ const handlers = {
         }
 
         const address = deriveAddress(entropy);
-        const passwordBuf = new TextEncoder().encode(password);
         const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
-        const encrypted = await Secret.exportEncrypted(entropy, passwordBuf);
+
+        const record = {
+            id,
+            defaultAddress: address.serialize(),
+        };
+
+        // Password encryption (optional)
+        if (password) {
+            const passwordBuf = new TextEncoder().encode(password);
+            record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
+        }
 
         // Encrypt entropy with PRF key for future WebAuthn use
         const newIv = crypto.getRandomValues(new Uint8Array(12));
@@ -501,16 +560,11 @@ const handlers = {
             { name: 'AES-GCM', iv: newIv }, encKey, entropy.serialize(),
         );
 
-        const record = {
-            id,
-            secret: new Uint8Array(encrypted),
-            defaultAddress: address.serialize(),
-            webauthn: {
-                credentialId: storedCredentialId,
-                prfSalt: storedPrfSalt,
-                encryptedSecret: new Uint8Array(ciphertext),
-                iv: newIv,
-            },
+        record.webauthn = {
+            credentialId: storedCredentialId,
+            prfSalt: storedPrfSalt,
+            encryptedSecret: new Uint8Array(ciphertext),
+            iv: newIv,
         };
 
         const db = await connectDB();

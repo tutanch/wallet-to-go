@@ -198,6 +198,11 @@ export function getWebAuthnInfo() {
     return call('getWebAuthnInfo');
 }
 
+/** Check if a password is set. Transparent passthrough — no UI shown. */
+export function hasPassword() {
+    return call('hasPassword');
+}
+
 /**
  * Register WebAuthn credential. Keyguard shows password entry + biometric registration.
  * Returns { success: true }.

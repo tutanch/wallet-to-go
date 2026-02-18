@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { exportMnemonic, deleteWallet, getWebAuthnInfo, registerWebAuthn, removeWebAuthn } from '../modules/keyguard-api.js';
+import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn } from '../modules/keyguard-api.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 
@@ -132,14 +132,23 @@ export function settingsView() {
 
         try {
             const info = await getWebAuthnInfo();
+            const hasPw = await hasPassword();
+
             if (info.hasWebAuthn) {
                 webauthnStatus.textContent = 'Biometric unlock is enabled.';
-                webauthnBtn.textContent = 'Disable Biometric Unlock';
-                webauthnBtn.style.display = '';
+                if (hasPw) {
+                    webauthnBtn.textContent = 'Disable Biometric Unlock';
+                    webauthnBtn.style.display = '';
+                    webauthnBtn.disabled = false;
+                } else {
+                    // Passkey-only wallet: can't disable without a password fallback
+                    webauthnBtn.style.display = 'none';
+                }
             } else {
                 webauthnStatus.textContent = 'Use your fingerprint, face, or device PIN instead of typing your password.';
                 webauthnBtn.textContent = 'Enable Biometric Unlock';
                 webauthnBtn.style.display = '';
+                webauthnBtn.disabled = false;
             }
         } catch (_) {
             securitySection.style.display = 'none';

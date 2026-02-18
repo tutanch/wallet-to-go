@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { unlock } from '../modules/keyguard-api.js';
+import { unlock, hasPassword } from '../modules/keyguard-api.js';
 
 export function lockView() {
     const el = document.createElement('div');
@@ -14,7 +14,7 @@ export function lockView() {
                 <p class="nq-text" style="margin-bottom: 20px;">Unlock your wallet to continue.</p>
                 <button class="nq-button" id="btn-passkey">Login with Passkey</button>
                 <p style="margin: 16px 0 0;">
-                    <button class="nq-button-s" id="btn-password">Use Password</button>
+                    <button class="nq-button-s" id="btn-password" style="display: none;">Use Password</button>
                 </p>
                 <p class="nq-text error-text" id="lock-error" style="display: none; margin-top: 12px;"></p>
                 <p style="margin-top: 24px;">
@@ -23,6 +23,13 @@ export function lockView() {
             </div>
         </div>
     `;
+
+    // Show password button only if a password is set
+    hasPassword().then(hasPw => {
+        if (hasPw) {
+            el.querySelector('#btn-password').style.display = '';
+        }
+    }).catch(() => {});
 
     const errorEl = el.querySelector('#lock-error');
 

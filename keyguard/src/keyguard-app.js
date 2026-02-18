@@ -226,7 +226,7 @@ function renderTxConfirm({ amount, recipient, message, fee }) {
         </div>`;
 }
 
-function renderDeleteConfirm() {
+function renderDeleteConfirm({ showPassword = true } = {}) {
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
@@ -236,10 +236,11 @@ function renderDeleteConfirm() {
                 </div>
                 <form id="delete-form" style="display: contents;">
                     <div class="keyguard-body">
+                        ${showPassword ? `
                         <div class="form-group">
                             <input type="password" class="nq-input" id="password"
                                 placeholder="Enter your password" autocomplete="current-password">
-                        </div>
+                        </div>` : ''}
                         <div class="form-group">
                             <input type="text" class="nq-input" id="confirm-text"
                                 placeholder='Type "DELETE" to confirm' autocomplete="off">
@@ -441,48 +442,98 @@ async function flowCreateWallet() {
     }));
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-confirm').onclick = () => {
-        // Clear mnemonic from DOM before password step
+    ui.querySelector('#btn-confirm').onclick = async () => {
+        // Clear mnemonic from DOM
         setUI('');
 
-        // Step 2: Set password
-        setUI(renderPasswordForm({
-            title: 'Set a Password',
-            subtitle: 'This password encrypts your wallet on this device.',
-            isNew: true,
-        }));
+        const prfSupported = await isPrfSupported();
 
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-        ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const pw = ui.querySelector('#password').value;
-            const confirm = ui.querySelector('#password-confirm').value;
-            const errorEl = ui.querySelector('#error');
+        if (prfSupported) {
+            // Step 2a: Offer passkey first (password is optional)
+            setUI(renderWebAuthnPrompt());
 
-            if (pw.length < 8) { showError(errorEl, 'Password must be at least 8 characters.'); return; }
-            if (pw !== confirm) { showError(errorEl, 'Passwords do not match.'); return; }
+            ui.querySelector('#btn-skip').onclick = () => {
+                // User skipped passkey → fall through to password
+                setUI('');
+                showCreatePasswordForm(walletData);
+            };
 
-            const btn = ui.querySelector('#btn-submit');
-            setButtonState(btn, 'Saving...', true);
-            try {
-                await callWorker('saveWallet', { password: pw });
-                ui.querySelector('#password').value = '';
-                ui.querySelector('#password-confirm').value = '';
+            ui.querySelector('#btn-enable').onclick = async () => {
+                const btn = ui.querySelector('#btn-enable');
+                const errorEl = ui.querySelector('#error');
+                setButtonState(btn, 'Registering...', true);
 
-                // Offer WebAuthn registration if supported
-                if (await isPrfSupported()) {
-                    await offerWebAuthnRegistration(pw, walletData.address);
+                try {
+                    const prfSalt = generatePrfSalt();
+                    const userId = new TextEncoder().encode(walletData.address.substring(0, 32));
+                    const { credentialId, prfKey } = await createWebAuthnCredential(
+                        userId, walletData.address, prfSalt,
+                    );
+
+                    // Save wallet with passkey only (no password)
+                    await callWorker('saveWallet', {
+                        prfKey: Array.from(prfKey),
+                        credentialId: Array.from(credentialId),
+                        prfSalt: Array.from(prfSalt),
+                    });
+
+                    prfKey.fill(0);
+                    resolveSession({ address: walletData.address });
+                } catch (err) {
+                    if (err.message === 'PRF_NOT_SUPPORTED') {
+                        showError(errorEl, 'Your device does not support this feature.');
+                    } else if (err.name === 'NotAllowedError') {
+                        showError(errorEl, 'Registration was cancelled or timed out.');
+                    } else {
+                        showError(errorEl, 'Could not set up biometric unlock.');
+                    }
+                    setButtonState(btn, 'Try Again', false);
                 }
-
-                resolveSession({ address: walletData.address });
-            } catch (err) {
-                ui.querySelector('#password').value = '';
-                ui.querySelector('#password-confirm').value = '';
-                setButtonState(btn, 'Confirm', false);
-                showError(ui.querySelector('#error'), 'Failed to save wallet. Please try again.');
-            }
-        });
+            };
+        } else {
+            // Step 2b: No PRF support → password required
+            showCreatePasswordForm(walletData);
+        }
     };
+}
+
+function showCreatePasswordForm(walletData) {
+    setUI(renderPasswordForm({
+        title: 'Set a Password',
+        subtitle: 'This password encrypts your wallet on this device.',
+        isNew: true,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const confirm = ui.querySelector('#password-confirm').value;
+        const errorEl = ui.querySelector('#error');
+
+        if (pw.length < 8) { showError(errorEl, 'Password must be at least 8 characters.'); return; }
+        if (pw !== confirm) { showError(errorEl, 'Passwords do not match.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Saving...', true);
+        try {
+            await callWorker('saveWallet', { password: pw });
+            ui.querySelector('#password').value = '';
+            ui.querySelector('#password-confirm').value = '';
+
+            // Offer WebAuthn registration if supported
+            if (await isPrfSupported()) {
+                await offerWebAuthnRegistration(pw, walletData.address);
+            }
+
+            resolveSession({ address: walletData.address });
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            ui.querySelector('#password-confirm').value = '';
+            setButtonState(btn, 'Confirm', false);
+            showError(ui.querySelector('#error'), 'Failed to save wallet. Please try again.');
+        }
+    });
 }
 
 async function flowImportWallet() {
@@ -492,58 +543,111 @@ async function flowImportWallet() {
     setUI(renderWordEntry());
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#words-form').addEventListener('submit', (e) => {
+    ui.querySelector('#words-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const words = ui.querySelector('#mnemonic').value.trim().split(/\s+/);
         const errorEl = ui.querySelector('#error');
         if (words.length !== 24) { showError(errorEl, 'Please enter exactly 24 words.'); return; }
 
-        // Keep a copy of words for the password step
+        // Keep a copy of words for later steps
         const wordsCopy = words.slice();
         setUI('');
 
-        // Step 2: Set password
-        setUI(renderPasswordForm({
-            title: 'Set a Password',
-            subtitle: 'This password encrypts your imported wallet.',
-            isNew: true,
-        }));
+        const prfSupported = await isPrfSupported();
 
-        ui.querySelector('#btn-cancel').onclick = () => {
-            wordsCopy.fill('');
-            rejectSession('User cancelled');
-        };
-        ui.querySelector('#pw-form').addEventListener('submit', async (e2) => {
-            e2.preventDefault();
-            const pw = ui.querySelector('#password').value;
-            const confirm = ui.querySelector('#password-confirm').value;
-            const errorEl2 = ui.querySelector('#error');
+        if (prfSupported) {
+            // Step 2a: Offer passkey first (password is optional)
+            setUI(renderWebAuthnPrompt());
 
-            if (pw.length < 8) { showError(errorEl2, 'Password must be at least 8 characters.'); return; }
-            if (pw !== confirm) { showError(errorEl2, 'Passwords do not match.'); return; }
+            ui.querySelector('#btn-skip').onclick = () => {
+                // User skipped passkey → fall through to password
+                setUI('');
+                showImportPasswordForm(wordsCopy);
+            };
 
-            const btn = ui.querySelector('#btn-submit');
-            setButtonState(btn, 'Importing...', true);
-            try {
-                const result = await callWorker('importWallet', { words: wordsCopy, password: pw });
-                ui.querySelector('#password').value = '';
-                ui.querySelector('#password-confirm').value = '';
-                wordsCopy.fill('');
+            ui.querySelector('#btn-enable').onclick = async () => {
+                const btn = ui.querySelector('#btn-enable');
+                const errorEl2 = ui.querySelector('#error');
+                setButtonState(btn, 'Registering...', true);
 
-                // Offer WebAuthn registration if supported
-                if (await isPrfSupported()) {
-                    await offerWebAuthnRegistration(pw, result.address);
+                try {
+                    const prfSalt = generatePrfSalt();
+                    // Use a temporary address placeholder for credential creation
+                    const userId = new TextEncoder().encode('nimiq-import-user');
+                    const { credentialId, prfKey } = await createWebAuthnCredential(
+                        userId, 'Nimiq Wallet', prfSalt,
+                    );
+
+                    // Import wallet with passkey only (no password)
+                    const result = await callWorker('importWallet', {
+                        words: wordsCopy,
+                        prfKey: Array.from(prfKey),
+                        credentialId: Array.from(credentialId),
+                        prfSalt: Array.from(prfSalt),
+                    });
+
+                    prfKey.fill(0);
+                    wordsCopy.fill('');
+                    resolveSession({ address: result.address });
+                } catch (err) {
+                    if (err.message === 'PRF_NOT_SUPPORTED') {
+                        showError(errorEl2, 'Your device does not support this feature.');
+                    } else if (err.name === 'NotAllowedError') {
+                        showError(errorEl2, 'Registration was cancelled or timed out.');
+                    } else {
+                        showError(errorEl2, 'Could not set up biometric unlock.');
+                    }
+                    setButtonState(btn, 'Try Again', false);
                 }
+            };
+        } else {
+            // Step 2b: No PRF support → password required
+            showImportPasswordForm(wordsCopy);
+        }
+    });
+}
 
-                resolveSession({ address: result.address });
-            } catch (err) {
-                ui.querySelector('#password').value = '';
-                ui.querySelector('#password-confirm').value = '';
-                wordsCopy.fill('');
-                setButtonState(btn, 'Confirm', false);
-                showError(ui.querySelector('#error'), 'Invalid recovery words or wrong password.');
+function showImportPasswordForm(wordsCopy) {
+    setUI(renderPasswordForm({
+        title: 'Set a Password',
+        subtitle: 'This password encrypts your imported wallet.',
+        isNew: true,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => {
+        wordsCopy.fill('');
+        rejectSession('User cancelled');
+    };
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const confirm = ui.querySelector('#password-confirm').value;
+        const errorEl = ui.querySelector('#error');
+
+        if (pw.length < 8) { showError(errorEl, 'Password must be at least 8 characters.'); return; }
+        if (pw !== confirm) { showError(errorEl, 'Passwords do not match.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Importing...', true);
+        try {
+            const result = await callWorker('importWallet', { words: wordsCopy, password: pw });
+            ui.querySelector('#password').value = '';
+            ui.querySelector('#password-confirm').value = '';
+            wordsCopy.fill('');
+
+            // Offer WebAuthn registration if supported
+            if (await isPrfSupported()) {
+                await offerWebAuthnRegistration(pw, result.address);
             }
-        });
+
+            resolveSession({ address: result.address });
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            ui.querySelector('#password-confirm').value = '';
+            wordsCopy.fill('');
+            setButtonState(btn, 'Confirm', false);
+            showError(ui.querySelector('#error'), 'Invalid recovery words or wrong password.');
+        }
     });
 }
 
@@ -596,11 +700,12 @@ async function flowSignTransaction(args) {
     ui.querySelector('#btn-confirm').onclick = async () => {
         setUI('');
 
-        // Check if WebAuthn is configured
+        // Check which auth methods are configured
         const info = await callWorker('getWebAuthnInfo');
+        const passwordSet = await callWorker('hasPassword');
 
-        if (info.hasWebAuthn) {
-            // Step 2a: Offer biometric or password choice
+        if (info.hasWebAuthn && passwordSet) {
+            // Both methods available: offer choice
             setUI(renderUnlockChoice(
                 'Authenticate to Sign',
                 `Sending ${formattedAmount} to ${truncatedRecipient}`,
@@ -634,9 +739,47 @@ async function flowSignTransaction(args) {
                 setUI('');
                 showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
             };
+        } else if (info.hasWebAuthn) {
+            // Passkey only: go straight to biometric
+            showBiometricForSign(args, info, formattedAmount, truncatedRecipient);
         } else {
-            // Step 2b: No WebAuthn — go straight to password
+            // Password only: go straight to password
             showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
+        }
+    };
+}
+
+function showBiometricForSign(args, info, formattedAmount, truncatedRecipient) {
+    setUI(renderUnlockChoice(
+        'Authenticate to Sign',
+        `Sending ${formattedAmount} to ${truncatedRecipient}`,
+    ));
+
+    // Hide the password button for passkey-only wallets
+    const pwBtn = ui.querySelector('#btn-password');
+    if (pwBtn) pwBtn.style.display = 'none';
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+    ui.querySelector('#btn-biometric').onclick = async () => {
+        const btn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
+        setButtonState(btn, 'Authenticating...', true);
+
+        try {
+            const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+            const { serializedTx } = await callWorker('signTransaction', {
+                ...args, prfKey: Array.from(prfKey),
+            });
+            prfKey.fill(0);
+            resolveSession({ serializedTx }, [serializedTx.buffer]);
+        } catch (err) {
+            setButtonState(btn, 'Use Biometric / Passkey', false);
+            if (err.name === 'NotAllowedError') {
+                showError(errorEl, 'Authentication cancelled. Try again.');
+            } else {
+                showError(errorEl, 'Biometric failed. Try again.');
+            }
         }
     };
 }
@@ -711,11 +854,12 @@ function showPasswordFormForExport() {
 async function flowExportMnemonic() {
     showUI();
 
-    // Check if WebAuthn is configured
+    // Check which auth methods are configured
     const info = await callWorker('getWebAuthnInfo');
+    const passwordSet = await callWorker('hasPassword');
 
-    if (info.hasWebAuthn) {
-        // Offer biometric or password choice
+    if (info.hasWebAuthn && passwordSet) {
+        // Both methods available: offer choice
         setUI(renderUnlockChoice(
             'Show Recovery Words',
             'Authenticate to reveal your recovery words.',
@@ -750,45 +894,126 @@ async function flowExportMnemonic() {
             setUI('');
             showPasswordFormForExport();
         };
+    } else if (info.hasWebAuthn) {
+        // Passkey only: go straight to biometric
+        showBiometricForExport(info);
     } else {
-        // No WebAuthn — go straight to password
+        // Password only: go straight to password
         showPasswordFormForExport();
     }
+}
+
+function showBiometricForExport(info) {
+    setUI(renderUnlockChoice(
+        'Show Recovery Words',
+        'Authenticate to reveal your recovery words.',
+    ));
+
+    // Hide the password button for passkey-only wallets
+    const pwBtn = ui.querySelector('#btn-password');
+    if (pwBtn) pwBtn.style.display = 'none';
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+    ui.querySelector('#btn-biometric').onclick = async () => {
+        const btn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
+        setButtonState(btn, 'Authenticating...', true);
+
+        try {
+            const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+            const { words } = await callWorker('exportMnemonic', {
+                prfKey: Array.from(prfKey),
+            });
+            prfKey.fill(0);
+            setUI('');
+            showExportedWords(words);
+        } catch (err) {
+            setButtonState(btn, 'Use Biometric / Passkey', false);
+            if (err.name === 'NotAllowedError') {
+                showError(errorEl, 'Authentication cancelled. Try again.');
+            } else {
+                showError(errorEl, 'Biometric failed. Try again.');
+            }
+        }
+    };
 }
 
 async function flowDeleteWallet() {
     showUI();
 
-    setUI(renderDeleteConfirm());
+    const passwordSet = await callWorker('hasPassword');
+    const info = await callWorker('getWebAuthnInfo');
 
-    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#delete-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pw = ui.querySelector('#password').value;
-        const confirmText = ui.querySelector('#confirm-text').value;
-        const errorEl = ui.querySelector('#error');
+    if (passwordSet) {
+        // Has password: use password + DELETE confirmation
+        setUI(renderDeleteConfirm({ showPassword: true }));
 
-        if (confirmText !== 'DELETE') { showError(errorEl, 'Please type DELETE to confirm.'); return; }
-        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+        ui.querySelector('#delete-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const pw = ui.querySelector('#password').value;
+            const confirmText = ui.querySelector('#confirm-text').value;
+            const errorEl = ui.querySelector('#error');
 
-        const btn = ui.querySelector('#btn-submit');
-        setButtonState(btn, 'Deleting...', true);
-        try {
-            const valid = await callWorker('verifyPassword', { password: pw });
-            ui.querySelector('#password').value = '';
-            if (!valid) {
+            if (confirmText !== 'DELETE') { showError(errorEl, 'Please type DELETE to confirm.'); return; }
+            if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+            const btn = ui.querySelector('#btn-submit');
+            setButtonState(btn, 'Deleting...', true);
+            try {
+                const valid = await callWorker('verifyPassword', { password: pw });
+                ui.querySelector('#password').value = '';
+                if (!valid) {
+                    setButtonState(btn, 'Delete Wallet', false);
+                    showError(errorEl, 'Wrong password.');
+                    return;
+                }
+                await callWorker('deleteWallet');
+                resolveSession({ success: true });
+            } catch (err) {
+                ui.querySelector('#password').value = '';
                 setButtonState(btn, 'Delete Wallet', false);
-                showError(errorEl, 'Wrong password.');
-                return;
+                showError(errorEl, 'Failed to delete wallet.');
             }
-            await callWorker('deleteWallet');
-            resolveSession({ success: true });
-        } catch (err) {
-            ui.querySelector('#password').value = '';
-            setButtonState(btn, 'Delete Wallet', false);
-            showError(errorEl, 'Failed to delete wallet.');
-        }
-    });
+        });
+    } else if (info.hasWebAuthn) {
+        // Passkey only: passkey verification + DELETE confirmation
+        setUI(renderDeleteConfirm({ showPassword: false }));
+
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+        ui.querySelector('#delete-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const confirmText = ui.querySelector('#confirm-text').value;
+            const errorEl = ui.querySelector('#error');
+
+            if (confirmText !== 'DELETE') { showError(errorEl, 'Please type DELETE to confirm.'); return; }
+
+            const btn = ui.querySelector('#btn-submit');
+            setButtonState(btn, 'Authenticating...', true);
+
+            try {
+                // Verify identity via passkey
+                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                // Attempt decryption to verify the passkey is valid
+                await callWorker('exportMnemonic', { prfKey: Array.from(prfKey) });
+                prfKey.fill(0);
+
+                setButtonState(btn, 'Deleting...', true);
+                await callWorker('deleteWallet');
+                resolveSession({ success: true });
+            } catch (err) {
+                setButtonState(btn, 'Delete Wallet', false);
+                if (err.name === 'NotAllowedError') {
+                    showError(errorEl, 'Authentication cancelled.');
+                } else {
+                    showError(errorEl, 'Failed to delete wallet.');
+                }
+            }
+        });
+    } else {
+        rejectSession('No authentication method available');
+    }
 }
 
 // ── Settings: WebAuthn management flows ───────────────────────────────────
@@ -947,49 +1172,34 @@ async function flowRestoreWithPasskey() {
             return;
         }
 
-        // Step 2: Set password for this device
-        setUI(renderPasswordForm({
-            title: 'Set a Password',
-            subtitle: 'Choose a backup password for this device.',
-            isNew: true,
-        }));
-
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-        ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const pw = ui.querySelector('#password').value;
-            const confirm = ui.querySelector('#password-confirm').value;
-            const errorEl2 = ui.querySelector('#error');
-
-            if (pw.length < 8) { showError(errorEl2, 'Password must be at least 8 characters.'); return; }
-            if (pw !== confirm) { showError(errorEl2, 'Passwords do not match.'); return; }
-
-            const btn2 = ui.querySelector('#btn-submit');
-            setButtonState(btn2, 'Restoring...', true);
-            try {
-                const result = await callWorker('restoreWithPasskey', {
-                    prfKey: Array.from(prfKey),
-                    password: pw,
-                    credentialId: Array.from(new Uint8Array(credentialId)),
-                    prfSalt: Array.from(new Uint8Array(prfSalt)),
-                    fromBackup,
-                });
-                ui.querySelector('#password').value = '';
-                ui.querySelector('#password-confirm').value = '';
-                if (prfKey.fill) prfKey.fill(0);
-                resolveSession({ address: result.address });
-            } catch (err) {
-                ui.querySelector('#password').value = '';
-                ui.querySelector('#password-confirm').value = '';
-                setButtonState(btn2, 'Confirm', false);
-                showError(ui.querySelector('#error'), 'Restoration failed: ' + err.message);
-            }
-        });
+        // Restore wallet with passkey only (no password needed)
+        setButtonState(btn, 'Restoring...', true);
+        try {
+            const result = await callWorker('restoreWithPasskey', {
+                prfKey: Array.from(prfKey),
+                credentialId: Array.from(new Uint8Array(credentialId)),
+                prfSalt: Array.from(new Uint8Array(prfSalt)),
+                fromBackup,
+            });
+            if (prfKey.fill) prfKey.fill(0);
+            resolveSession({ address: result.address });
+        } catch (err) {
+            if (prfKey.fill) prfKey.fill(0);
+            setButtonState(btn, 'Authenticate', false);
+            showError(errorEl, 'Restoration failed: ' + err.message);
+        }
     };
 }
 
 async function flowUnlock() {
     showUI();
+
+    // Passkey-only wallets don't have a password to verify.
+    // They unlock via the lock screen's passkey button (no keyguard needed).
+    const passwordSet = await callWorker('hasPassword');
+    if (!passwordSet) {
+        return rejectSession('No password set. Use your passkey to unlock.');
+    }
 
     setUI(renderPasswordForm({
         title: 'Unlock Wallet',
@@ -1025,6 +1235,12 @@ async function flowUnlock() {
 
 async function flowRemoveWebAuthn() {
     showUI();
+
+    // Block removal if no password is set (would leave no auth method)
+    const passwordSet = await callWorker('hasPassword');
+    if (!passwordSet) {
+        return rejectSession('Cannot disable biometric unlock without a password set.');
+    }
 
     // Password entry to confirm removal
     setUI(renderPasswordForm({
@@ -1111,6 +1327,16 @@ window.addEventListener('message', async (event) => {
     if (command === 'getWebAuthnInfo') {
         try {
             const result = await callWorker('getWebAuthnInfo');
+            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
+        } catch (e) {
+            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
+        }
+        return;
+    }
+
+    if (command === 'hasPassword') {
+        try {
+            const result = await callWorker('hasPassword');
             event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
         } catch (e) {
             event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
