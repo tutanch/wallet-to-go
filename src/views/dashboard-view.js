@@ -140,8 +140,9 @@ export async function dashboardView() {
     // Store the removal function once resolved to handle cleanup race condition.
     let removeTxListener = null;
     let cleaned = false;
-    network.addTransactionListener((tx) => {
+    network.addTransactionListener(async (tx) => {
         recentTxs = [tx, ...recentTxs].slice(0, 10);
+        try { balance = await network.getBalance(address); } catch (_) {}
         render();
     }, [address]).then(remove => {
         if (cleaned) {

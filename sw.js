@@ -1,12 +1,12 @@
 // AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
-// Generated from git SHA: cbe7dc6
+// Generated from git SHA: ca85305
 //
 // Security guarantee: if any file on the server has a different hash than
 // what is listed here, the SW install fails and the previous known-good SW
 // continues serving users. Tampered files cannot reach returning visitors.
 
-const CACHE_NAME = 'nimiq-wallet-vcbe7dc6';
+const CACHE_NAME = 'nimiq-wallet-vca85305';
 
 // SHA-256 hashes of every file. Computed at deploy time.
 const FILE_HASHES = {
@@ -33,14 +33,14 @@ const FILE_HASHES = {
     "src/keyguard-worker.js": "sha256-lhBHSpaJ1zPoFGvf5D+gkSzCdQxwTu/wH2+2HIY4PCw=",
     "src/lib/qr-encoder.js": "sha256-W3/yGOV65+pBprZTS9j382f7OMVkXsqN6CogoBNZry8=",
     "src/main.js": "sha256-Wr7243RYyTkC2uI4BLaf06etE++KRP6EnWHis/y6J2M=",
-    "src/modules/keyguard-api.js": "sha256-EunFHzzhCBikhwOGFToWv85v9PJ6NZN6SuthoSvKNw0=",
+    "src/modules/keyguard-api.js": "sha256-b2RGqg56k67aKzLfQ6aCzN8h4+Dmv5vZfaJ9+pku9PA=",
     "src/modules/network-client.js": "sha256-0UzSAGWMssZ+cEtsjehmkGLlsfDhfc8v9kf8m/zdc4w=",
     "src/nimiq.js": "sha256-AK7iYfQuGDUfl5b1wdB4Pp3VNjgwSMl/fZxFWjabDyg=",
     "src/router.js": "sha256-e1N17L2tRoghYCLkUu3vuW8tKmMiRX8t7HOJuYZzPAo=",
     "src/security-init.js": "sha256-ohahumo/WhLevCONL0T6KN4KMGZ3twcXleQBIgtdLEs=",
     "src/styles/app.css": "sha256-XDiKe7Y58ZzxL8FXJV4F/MJj/c43AcrF4wxiu+ODa9Q=",
     "src/views/create-view.js": "sha256-D1RaBIoMNxhlJlGFN+LQepngZ3nyAOn/d1NojyA/Nj4=",
-    "src/views/dashboard-view.js": "sha256-r1OkqIsJZKYMoOXKw6XxoPZ88mnWO4A1wHPm7BTag00=",
+    "src/views/dashboard-view.js": "sha256-vyY0EHguisTZbP45VtfgS+9KIXGQhBZFifUW2MZ9maQ=",
     "src/views/history-view.js": "sha256-eZN7532KwA2Fs3qwNV8yvQzzWxtdIpOZ2DRQsh5vF9A=",
     "src/views/import-view.js": "sha256-WoebbUMOUo5vN1hr9KuZErV1S5/mb3nNVxE1W71S7hQ=",
     "src/views/receive-view.js": "sha256-+006PcCwGyUmSOJ1MtISkZdoHuBkDdrko0yDyg92/W0=",

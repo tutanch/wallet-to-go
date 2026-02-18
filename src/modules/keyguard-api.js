@@ -33,9 +33,16 @@ export const keyguardReady = new Promise((resolve) => {
     function ping() {
         const frame = document.getElementById('keyguard-frame');
         if (!frame) return;
+        // Only ping if the frame has already loaded cross-origin content.
+        // While the frame is still about:blank (same-origin), contentDocument
+        // is accessible; Chrome would throw a SecurityError on the postMessage
+        // and log it even when caught. Skip here — the load listener handles it.
+        let sameOrigin;
+        try { sameOrigin = frame.contentDocument !== null; } catch (_) { sameOrigin = false; }
+        if (sameOrigin) return;
         try { frame.contentWindow.postMessage({ type: 'ping' }, KEYGUARD_ORIGIN); } catch (_) {}
     }
-    ping(); // cover the already-loaded case
+    ping(); // cover the already-loaded case (cross-origin content present)
     const frame = document.getElementById('keyguard-frame');
     if (frame) frame.addEventListener('load', ping); // cover the still-loading case
 });
