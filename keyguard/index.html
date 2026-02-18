@@ -6,12 +6,14 @@
     <!--
         Strict CSP for the keyguard:
         - connect-src 'none': keyguard never makes network requests
-        - frame-ancestors [WALLET_ORIGIN]: only the wallet can embed this iframe
         - form-action 'none': no form submissions to external URLs
-        Replace [WALLET_ORIGIN] with the wallet's actual origin before deploying,
-        e.g. https://tutanch.github.io
+        - script-src hash: covers the inline importmap below
+        NOTE: frame-ancestors cannot be enforced via <meta>; add it as an HTTP
+        response header in your server/CDN config instead:
+          Content-Security-Policy: frame-ancestors [WALLET_ORIGIN]
+        e.g.  frame-ancestors https://tutanch.github.io
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'none'; worker-src 'self' blob:; frame-ancestors [WALLET_ORIGIN]; form-action 'none'; base-uri 'self'; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-pJC4gS7fEJ2sD+197b4a+ot2JC9A5BR+IiRkBc7vMMk='; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; worker-src 'self' blob:; form-action 'none'; base-uri 'self'; object-src 'none'">
     <title>Nimiq Keyguard</title>
     <link rel="icon" href="public/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="src/styles/keyguard.css">

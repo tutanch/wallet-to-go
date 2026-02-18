@@ -39,7 +39,10 @@ The wallet communicates with the keyguard exclusively via `postMessage` with str
 ```
 index.html                Entry point, CSP, keyguard iframe, script loading
 sw.js                     Generated service worker (integrity-pinned caching)
+.github/workflows/
+  deploy.yml              GitHub Actions workflow (replaces placeholders, deploys)
 scripts/
+  deploy.sh               Cross-origin deploy script (wallet + keyguard)
   generate-sw.js          Generates sw.js with SHA-256 hashes of all assets
 src/
   main.js                 App init, SW registration, keyguard readiness
@@ -107,27 +110,38 @@ Then open `http://localhost:8080`.
 
 ### One-time setup
 
-1. Create a GitHub Organization (e.g. `nimiq-wallet-keyguard`)
-2. Create a repo named `<org-name>.github.io` under that org and push the `keyguard/` contents
-3. Enable GitHub Pages on both repos
-4. Replace `[KEYGUARD_ORIGIN]` in wallet files with `https://<org-name>.github.io`
-5. Replace `[WALLET_ORIGIN]` in keyguard files with `https://tutanch.github.io`
-
-### Before every wallet deploy
+1. Create a free [GitHub Organization](https://github.com/account/organizations/new) for the keyguard (e.g. `my-keyguard`)
+2. Run the deploy script:
 
 ```bash
-node scripts/generate-sw.js
-git add sw.js
+./scripts/deploy.sh <org-name>
 ```
 
-**Why this step is required:** The service worker contains baked-in SHA-256 hashes of every file in the wallet. These hashes are how returning users are protected — the SW verifies cached files against the pinned hashes, and rejects anything that doesn't match.
+This creates a `<org-name>.github.io` repo in the org, pushes the keyguard code with the correct `[WALLET_ORIGIN]`, and writes a GitHub Actions workflow for the wallet with the correct `[KEYGUARD_ORIGIN]`.
 
-If you change any file (even a one-byte edit to `main.js`) without regenerating `sw.js`:
+3. Commit and push the wallet:
 
-- **If `sw.js` bytes didn't change** — the browser sees no SW update, so returning users keep getting the old cached version of the changed file. Your deploy is silently ignored for existing users.
-- **If `sw.js` did change for unrelated reasons** — the browser triggers a SW update, the new SW fetches the changed file, the hash check fails, and the install is aborted. The old SW stays active. Again, existing users don't see your changes.
+```bash
+git add -A && git commit -m "Add deploy workflow" && git push
+```
 
-Running `node scripts/generate-sw.js` recalculates all hashes to match the current state of the files, so the new SW installs cleanly and caches the correct versions.
+4. Set the wallet repo's GitHub Pages source to **GitHub Actions** (Settings > Pages > Source)
+
+That's it. Every push to `main` auto-deploys the wallet. The workflow replaces origin placeholders and regenerates `sw.js` at build time — no manual steps.
+
+### Updating the keyguard
+
+The keyguard source lives in `keyguard/` in this repo. After making changes, re-run the deploy script to push them to the org repo:
+
+```bash
+./scripts/deploy.sh
+```
+
+(It remembers the org name from the first run.)
+
+### Service worker integrity hashes
+
+The GitHub Actions workflow runs `node scripts/generate-sw.js` automatically on every deploy. The generated `sw.js` contains SHA-256 hashes of every wallet asset. On install, the service worker verifies each cached file against these hashes — if any file has been tampered with on the server, the SW install fails and the previous known-good version stays active.
 
 ## Security
 
