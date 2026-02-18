@@ -99,6 +99,69 @@ async function ensureWasm() {
 // Between createWallet() and saveWallet(), entropy lives only here.
 let pendingEntropy = null;
 
+// ── Passkey backup database ───────────────────────────────────────
+// Separate DB so it survives wallet deletion. Stores only the
+// PRF-encrypted entropy + credential metadata — no password data.
+
+const BACKUP_DB_NAME = 'nimiq-passkey-backup';
+const BACKUP_STORE = 'backup';
+
+function connectBackupDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(BACKUP_DB_NAME, 1);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onupgradeneeded = () => {
+            request.result.createObjectStore(BACKUP_STORE, { keyPath: 'id' });
+        };
+    });
+}
+
+async function savePasskeyBackup(webauthnData, defaultAddress) {
+    const db = await connectBackupDB();
+    const tx = db.transaction([BACKUP_STORE], 'readwrite');
+    const request = tx.objectStore(BACKUP_STORE).put({
+        id: 'backup',
+        credentialId: webauthnData.credentialId,
+        prfSalt: webauthnData.prfSalt,
+        encryptedSecret: webauthnData.encryptedSecret,
+        iv: webauthnData.iv,
+        defaultAddress,
+    });
+    await txPromise(request, tx);
+    db.close();
+}
+
+async function getPasskeyBackupRecord() {
+    let db;
+    try {
+        db = await connectBackupDB();
+    } catch (_) {
+        return null;
+    }
+    const tx = db.transaction([BACKUP_STORE], 'readonly');
+    const request = tx.objectStore(BACKUP_STORE).get('backup');
+    const result = await new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return result;
+}
+
+async function clearPasskeyBackup() {
+    let db;
+    try {
+        db = await connectBackupDB();
+    } catch (_) {
+        return;
+    }
+    const tx = db.transaction([BACKUP_STORE], 'readwrite');
+    tx.objectStore(BACKUP_STORE).clear();
+    await new Promise((resolve) => { tx.oncomplete = resolve; });
+    db.close();
+}
+
 // ── WebAuthn AES-GCM helpers ──────────────────────────────────────
 
 async function decryptWithPrfKey(record, prfKey) {
@@ -305,6 +368,12 @@ const handlers = {
     },
 
     async deleteWallet() {
+        // Preserve PRF-encrypted backup before deleting (enables passkey restore)
+        const record = await getRecord();
+        if (record?.webauthn) {
+            await savePasskeyBackup(record.webauthn, record.defaultAddress);
+        }
+
         if (dbPromise) {
             const db = await dbPromise;
             db.close();
@@ -373,6 +442,92 @@ const handlers = {
             credentialId: record.webauthn.credentialId,
             prfSalt: record.webauthn.prfSalt,
         };
+    },
+
+    async hasPasskeyBackup() {
+        const backup = await getPasskeyBackupRecord();
+        if (!backup) return { hasBackup: false };
+        return {
+            hasBackup: true,
+            credentialId: backup.credentialId,
+            prfSalt: backup.prfSalt,
+        };
+    },
+
+    async restoreWithPasskey({ prfKey, password, credentialId, prfSalt, fromBackup }) {
+        await ensureWasm();
+
+        let entropy;
+        let storedCredentialId;
+        let storedPrfSalt;
+
+        if (fromBackup) {
+            // Same-device restore: decrypt entropy from backup
+            const backup = await getPasskeyBackupRecord();
+            if (!backup) throw new Error('No passkey backup found');
+
+            const aesKey = await crypto.subtle.importKey(
+                'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['decrypt'],
+            );
+            let entropyBytes;
+            try {
+                entropyBytes = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: backup.iv }, aesKey, backup.encryptedSecret,
+                );
+            } catch (_) {
+                throw new Error('Passkey decryption failed');
+            }
+            entropy = new Entropy(new Uint8Array(entropyBytes));
+            storedCredentialId = backup.credentialId;
+            storedPrfSalt = backup.prfSalt;
+        } else {
+            // Cross-device restore: PRF key IS the entropy
+            entropy = new Entropy(new Uint8Array(prfKey));
+            storedCredentialId = new Uint8Array(credentialId);
+            storedPrfSalt = new Uint8Array(prfSalt);
+        }
+
+        const address = deriveAddress(entropy);
+        const passwordBuf = new TextEncoder().encode(password);
+        const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
+        const encrypted = await Secret.exportEncrypted(entropy, passwordBuf);
+
+        // Encrypt entropy with PRF key for future WebAuthn use
+        const newIv = crypto.getRandomValues(new Uint8Array(12));
+        const encKey = await crypto.subtle.importKey(
+            'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['encrypt'],
+        );
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: newIv }, encKey, entropy.serialize(),
+        );
+
+        const record = {
+            id,
+            secret: new Uint8Array(encrypted),
+            defaultAddress: address.serialize(),
+            webauthn: {
+                credentialId: storedCredentialId,
+                prfSalt: storedPrfSalt,
+                encryptedSecret: new Uint8Array(ciphertext),
+                iv: newIv,
+            },
+        };
+
+        const db = await connectDB();
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const request = tx.objectStore(STORE_NAME).put(record);
+        await txPromise(request, tx);
+
+        // Clear backup if it existed
+        await clearPasskeyBackup();
+
+        // Zero entropy
+        try {
+            const bytes = entropy.serialize();
+            if (bytes instanceof Uint8Array) bytes.fill(0);
+        } catch (_) { /* best effort */ }
+
+        return { address: address.toUserFriendlyAddress() };
     },
 
     async removeWebAuthn() {

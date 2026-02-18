@@ -862,6 +862,122 @@ async function flowRegisterWebAuthn() {
     });
 }
 
+// Fixed PRF salt for cross-device deterministic wallet derivation.
+// Same passkey + this salt → same PRF output → same wallet on any device.
+const RESTORE_PRF_SALT = new Uint8Array([
+    110,105,109,105,113,45,119,97,108,108,101,116,45,112,114,102,
+    45,118,49,0,0,0,0,0,0,0,0,0,0,0,0,0,
+]); // "nimiq-wallet-prf-v1" padded to 32 bytes
+
+async function flowRestoreWithPasskey() {
+    showUI();
+
+    // Check for same-device backup first
+    let backup;
+    try {
+        backup = await callWorker('hasPasskeyBackup');
+    } catch (_) {
+        backup = { hasBackup: false };
+    }
+
+    setUI(`
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Login with Passkey</h1>
+                    <p>Authenticate with your passkey to access your wallet.</p>
+                </div>
+                <div class="keyguard-body" style="text-align:center;">
+                    <button id="btn-auth" type="button" class="btn-primary">Authenticate</button>
+                    <p class="error-text" id="error" style="display:none;"></p>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#btn-auth').onclick = async () => {
+        const btn = ui.querySelector('#btn-auth');
+        const errorEl = ui.querySelector('#error');
+        setButtonState(btn, 'Authenticating...', true);
+
+        let prfKey;
+        let credentialId;
+        let prfSalt;
+        let fromBackup = false;
+
+        try {
+            if (backup.hasBackup) {
+                // Same-device: use backup's credential ID and salt
+                prfKey = await getWebAuthnPrfKey(backup.credentialId, backup.prfSalt);
+                credentialId = backup.credentialId;
+                prfSalt = backup.prfSalt;
+                fromBackup = true;
+            } else {
+                // Cross-device: discoverable credential with fixed salt
+                const result = await requestWebAuthnFromWallet('getForRestore', {
+                    prfSalt: Array.from(RESTORE_PRF_SALT),
+                });
+                prfKey = result.prfKey;
+                credentialId = result.credentialId;
+                prfSalt = RESTORE_PRF_SALT;
+            }
+        } catch (err) {
+            setButtonState(btn, 'Authenticate', false);
+            if (err.name === 'NotAllowedError') {
+                showError(errorEl, 'Authentication cancelled or no passkey found.');
+            } else if (err.message === 'PRF output not available') {
+                showError(errorEl, 'Your device does not support passkey login.');
+            } else {
+                showError(errorEl, 'Passkey authentication failed.');
+            }
+            return;
+        }
+
+        // Step 2: Set password for this device
+        setUI(renderPasswordForm({
+            title: 'Set a Password',
+            subtitle: 'Choose a backup password for this device.',
+            isNew: true,
+        }));
+
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+        ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const pw = ui.querySelector('#password').value;
+            const confirm = ui.querySelector('#password-confirm').value;
+            const errorEl2 = ui.querySelector('#error');
+
+            if (pw.length < 8) { showError(errorEl2, 'Password must be at least 8 characters.'); return; }
+            if (pw !== confirm) { showError(errorEl2, 'Passwords do not match.'); return; }
+
+            const btn2 = ui.querySelector('#btn-submit');
+            setButtonState(btn2, 'Restoring...', true);
+            try {
+                const result = await callWorker('restoreWithPasskey', {
+                    prfKey: Array.from(prfKey),
+                    password: pw,
+                    credentialId: Array.from(new Uint8Array(credentialId)),
+                    prfSalt: Array.from(new Uint8Array(prfSalt)),
+                    fromBackup,
+                });
+                ui.querySelector('#password').value = '';
+                ui.querySelector('#password-confirm').value = '';
+                if (prfKey.fill) prfKey.fill(0);
+                resolveSession({ address: result.address });
+            } catch (err) {
+                ui.querySelector('#password').value = '';
+                ui.querySelector('#password-confirm').value = '';
+                setButtonState(btn2, 'Confirm', false);
+                showError(ui.querySelector('#error'), 'Restoration failed: ' + err.message);
+            }
+        });
+    };
+}
+
 async function flowUnlock() {
     showUI();
 
@@ -969,6 +1085,16 @@ window.addEventListener('message', async (event) => {
         return;
     }
 
+    if (command === 'hasPasskeyBackup') {
+        try {
+            const result = await callWorker('hasPasskeyBackup');
+            event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
+        } catch (e) {
+            event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);
+        }
+        return;
+    }
+
     if (command === 'getWebAuthnInfo') {
         try {
             const result = await callWorker('getWebAuthnInfo');
@@ -993,6 +1119,7 @@ window.addEventListener('message', async (event) => {
         case 'exportMnemonic':   flowExportMnemonic(); break;
         case 'deleteWallet':     flowDeleteWallet(); break;
         case 'unlock':           flowUnlock(); break;
+        case 'restoreWithPasskey': flowRestoreWithPasskey(); break;
         case 'registerWebAuthn': flowRegisterWebAuthn(); break;
         case 'removeWebAuthn':   flowRemoveWebAuthn(); break;
         default:

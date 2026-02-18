@@ -167,6 +167,15 @@ export function unlock() {
     return call('unlock');
 }
 
+/**
+ * Restore wallet from passkey. Keyguard handles authentication + password setup.
+ * Works cross-device via iCloud-synced passkeys.
+ * Returns { address }.
+ */
+export function restoreWithPasskey() {
+    return call('restoreWithPasskey');
+}
+
 /** Check if WebAuthn is configured. Transparent passthrough — no UI shown. */
 export function getWebAuthnInfo() {
     return call('getWebAuthnInfo');

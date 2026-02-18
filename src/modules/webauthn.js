@@ -98,6 +98,28 @@ async function getPrfKey({ credentialId, prfSalt }) {
     return Array.from(new Uint8Array(prfResult));
 }
 
+async function getDiscoverablePrfKey(prfSalt) {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+    const assertion = await navigator.credentials.get({
+        publicKey: {
+            challenge,
+            userVerification: 'required',
+            extensions: {
+                prf: { eval: { first: new Uint8Array(prfSalt) } },
+            },
+        },
+    });
+
+    const extResults = assertion.getClientExtensionResults();
+    const prfResult = extResults.prf?.results?.first;
+    if (!prfResult) throw new Error('PRF output not available');
+    return {
+        prfKey: Array.from(new Uint8Array(prfResult)),
+        credentialId: Array.from(new Uint8Array(assertion.rawId)),
+    };
+}
+
 // ── User gesture prompt ───────────────────────────────────────────────────
 // WebAuthn requires transient user activation. The keyguard iframe's click
 // doesn't count in the wallet's browsing context, so we show a brief overlay
@@ -210,6 +232,19 @@ window.addEventListener('message', async (event) => {
                 try {
                     await showGesturePrompt(false);
                     result = await getPrfKey(event.data);
+                } finally {
+                    if (frame) frame.style.display = '';
+                }
+                break;
+            }
+            case 'getForRestore': {
+                // Discoverable credential with PRF — for cross-device passkey login.
+                // No allowCredentials so the browser shows the passkey picker.
+                const frame = getFrame();
+                if (frame) frame.style.display = 'none';
+                try {
+                    await showGesturePrompt(false);
+                    result = await getDiscoverablePrfKey(event.data.prfSalt);
                 } finally {
                     if (frame) frame.style.display = '';
                 }

@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { hasKey } from '../modules/keyguard-api.js';
+import { restoreWithPasskey } from '../modules/keyguard-api.js';
 
 export function welcomeView() {
     const el = document.createElement('div');
@@ -26,36 +26,19 @@ export function welcomeView() {
         const btn = el.querySelector('#btn-passkey');
         const errorEl = el.querySelector('#passkey-error');
         btn.disabled = true;
-        btn.textContent = 'Authenticating...';
+        btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
         try {
-            await navigator.credentials.get({
-                publicKey: {
-                    challenge: crypto.getRandomValues(new Uint8Array(32)),
-                    userVerification: 'required',
-                },
-            });
-
-            // Passkey succeeded — check if wallet data exists on this device
-            const walletExists = await hasKey();
-            if (walletExists) {
-                navigate('#dashboard');
-            } else {
-                errorEl.textContent = 'Passkey verified, but no wallet found on this device. Please import your wallet using recovery words.';
-                errorEl.style.display = '';
-                btn.disabled = false;
-                btn.textContent = 'Login with Passkey';
-            }
+            await restoreWithPasskey();
+            navigate('#dashboard');
         } catch (e) {
             btn.disabled = false;
             btn.textContent = 'Login with Passkey';
-            if (e.name === 'NotAllowedError') {
-                errorEl.textContent = 'No passkey found or cancelled.';
-            } else {
-                errorEl.textContent = 'Passkey authentication failed.';
+            if (e.message !== 'User cancelled') {
+                errorEl.textContent = e.message || 'Passkey login failed.';
+                errorEl.style.display = '';
             }
-            errorEl.style.display = '';
         }
     });
 
