@@ -186,18 +186,20 @@ function getFrame() {
 
 function respondToKeyguard(result, error) {
     const frame = getFrame();
-    if (!frame) return;
-    if (error) {
-        frame.contentWindow.postMessage(
-            { type: 'webauthn-response', error: error.message || String(error), errorName: error.name },
-            KEYGUARD_ORIGIN,
-        );
-    } else {
-        frame.contentWindow.postMessage(
-            { type: 'webauthn-response', result },
-            KEYGUARD_ORIGIN,
-        );
-    }
+    if (!frame || !frame.contentWindow) return;
+    try {
+        if (error) {
+            frame.contentWindow.postMessage(
+                { type: 'webauthn-response', error: error.message || String(error), errorName: error.name },
+                KEYGUARD_ORIGIN,
+            );
+        } else {
+            frame.contentWindow.postMessage(
+                { type: 'webauthn-response', result },
+                KEYGUARD_ORIGIN,
+            );
+        }
+    } catch (_) {}
 }
 
 window.addEventListener('message', async (event) => {
