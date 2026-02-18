@@ -37,7 +37,7 @@ async function init() {
         const walletExists = await hasKey();
         const hash = window.location.hash;
 
-        if (walletExists && (!hash || hash === '#welcome' || hash === '#create' || hash === '#import')) {
+        if (walletExists && !hash) {
             navigate('#lock');
         } else if (!walletExists && hash !== '#create' && hash !== '#import') {
             navigate('#welcome');

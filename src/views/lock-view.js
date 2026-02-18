@@ -17,6 +17,9 @@ export function lockView() {
                     <button class="nq-button-s" id="btn-password">Use Password</button>
                 </p>
                 <p class="nq-text error-text" id="lock-error" style="display: none; margin-top: 12px;"></p>
+                <p style="margin-top: 24px;">
+                    <a href="#welcome" class="nq-link" id="link-different" style="font-size: 13px; opacity: 0.6;">Use a different wallet</a>
+                </p>
             </div>
         </div>
     `;
