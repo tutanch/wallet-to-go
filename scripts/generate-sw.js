@@ -18,6 +18,7 @@ const ROOT = join(__dirname, '..');
 const EXCLUDE = new Set([
     'node_modules',
     '.git',
+    '.github',      // CI config — not served by GitHub Pages
     'scripts',
     'sw.js',        // Generated file — cannot self-verify
     'keyguard',     // Separate repo — not served by this origin
