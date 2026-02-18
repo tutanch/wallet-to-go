@@ -47,8 +47,10 @@ function callWorker(command, args) {
 let currentSession = null;
 
 function sendToWallet(message, transfer = []) {
-    if (!currentSession) return;
-    currentSession.source.postMessage(message, currentSession.origin, transfer);
+    if (!currentSession || !currentSession.source) return;
+    try {
+        currentSession.source.postMessage(message, currentSession.origin, transfer);
+    } catch (_) {}
 }
 
 function showUI() {
@@ -259,9 +261,17 @@ function renderDeleteConfirm() {
 
 function requestWebAuthnFromWallet(action, params = {}) {
     return new Promise((resolve, reject) => {
+        // Timeout prevents the flow from hanging if the wallet never responds
+        // (e.g. if the webauthn delegation fails silently on the wallet side).
+        const timer = setTimeout(() => {
+            window.removeEventListener('message', onMessage);
+            reject(new Error('WebAuthn delegation timed out'));
+        }, 8000);
+
         function onMessage(event) {
             if (event.origin !== WALLET_ORIGIN) return;
             if (event.data?.type !== 'webauthn-response') return;
+            clearTimeout(timer);
             window.removeEventListener('message', onMessage);
             if (event.data.error) {
                 const err = new Error(event.data.error);
