@@ -446,3 +446,185 @@ textarea.nq-input {
     --btn-secondary-hover: rgba(224, 224, 236, 0.12);
     --account-row-hover: rgba(5, 130, 202, 0.12);
 }
+
+/* ---- Warning banner (mnemonic backup screen) ---- */
+.warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: rgba(245, 166, 35, 0.12);
+    border: 1px solid rgba(245, 166, 35, 0.35);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #b87a00;
+    line-height: 1.4;
+    margin-bottom: 12px;
+    animation: bannerPulse 2s ease-in-out 3;
+}
+
+.warning-banner-danger {
+    background: rgba(217, 68, 50, 0.1);
+    border-color: rgba(217, 68, 50, 0.35);
+    color: var(--nq-red);
+    animation: bannerPulseDanger 2s ease-in-out 3;
+}
+
+.warning-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+@keyframes bannerPulse {
+    0%, 100% { background: rgba(245, 166, 35, 0.12); }
+    50% { background: rgba(245, 166, 35, 0.25); }
+}
+
+@keyframes bannerPulseDanger {
+    0%, 100% { background: rgba(217, 68, 50, 0.1); }
+    50% { background: rgba(217, 68, 50, 0.22); }
+}
+
+/* ---- Verification challenge screen ---- */
+.verify-progress {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.verify-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border-color);
+    transition: background 0.3s, transform 0.3s;
+}
+
+.verify-dot.dot-correct {
+    background: var(--nq-green);
+    transform: scale(1.2);
+}
+
+.verify-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.verify-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.verify-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    letter-spacing: 0.03em;
+}
+
+.verify-input {
+    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+}
+
+.verify-input.verify-correct {
+    border-color: var(--nq-green);
+    background: rgba(33, 188, 165, 0.06);
+}
+
+.verify-input.verify-wrong {
+    border-color: var(--nq-red);
+    background: rgba(217, 68, 50, 0.06);
+}
+
+.verify-error {
+    margin-top: 2px;
+    font-size: 12px;
+}
+
+.btn-verify-ready {
+    animation: verifyGlow 1s ease-in-out infinite alternate;
+}
+
+@keyframes verifyGlow {
+    from { box-shadow: 0 4px 12px rgba(5, 130, 202, 0.3); }
+    to { box-shadow: 0 4px 20px rgba(5, 130, 202, 0.6); }
+}
+
+/* ---- Acknowledgment screen ---- */
+.ack-sentence-input {
+    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 14px;
+    min-height: 56px;
+    line-height: 1.5;
+    resize: none;
+}
+
+.ack-match-display {
+    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--bg-subtle);
+    margin-top: 6px;
+    line-height: 1.5;
+    min-height: 24px;
+}
+
+.ack-match-correct {
+    color: var(--nq-green);
+}
+
+.ack-match-wrong {
+    color: var(--nq-red);
+    text-decoration: underline wavy;
+}
+
+.ack-match-remaining {
+    color: var(--text-hint);
+}
+
+/* ---- Dark mode additions for new components ---- */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .warning-banner {
+        background: rgba(245, 166, 35, 0.15);
+        border-color: rgba(245, 166, 35, 0.3);
+        color: #f5a623;
+    }
+    :root:not([data-theme="light"]) .warning-banner-danger {
+        background: rgba(217, 68, 50, 0.15);
+        border-color: rgba(217, 68, 50, 0.3);
+        color: #e8604f;
+    }
+    :root:not([data-theme="light"]) .verify-input.verify-correct {
+        background: rgba(33, 188, 165, 0.1);
+    }
+    :root:not([data-theme="light"]) .verify-input.verify-wrong {
+        background: rgba(217, 68, 50, 0.1);
+    }
+}
+
+:root[data-theme="dark"] .warning-banner {
+    background: rgba(245, 166, 35, 0.15);
+    border-color: rgba(245, 166, 35, 0.3);
+    color: #f5a623;
+}
+
+:root[data-theme="dark"] .warning-banner-danger {
+    background: rgba(217, 68, 50, 0.15);
+    border-color: rgba(217, 68, 50, 0.3);
+    color: #e8604f;
+}
+
+:root[data-theme="dark"] .verify-input.verify-correct {
+    background: rgba(33, 188, 165, 0.1);
+}
+
+:root[data-theme="dark"] .verify-input.verify-wrong {
+    background: rgba(217, 68, 50, 0.1);
+}

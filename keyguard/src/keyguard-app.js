@@ -146,6 +146,21 @@ function setButtonState(btn, text, disabled) {
     btn.disabled = disabled;
 }
 
+/**
+ * Pick `count` unique random indices from [0, total).
+ * Uses crypto.getRandomValues for consistency with keyguard security posture.
+ * Returns a sorted array of indices.
+ */
+function pickRandomIndices(total, count) {
+    const indices = new Set();
+    while (indices.size < count) {
+        const buf = new Uint8Array(1);
+        crypto.getRandomValues(buf);
+        indices.add(buf[0] % total);
+    }
+    return Array.from(indices).sort((a, b) => a - b);
+}
+
 function formatLuna(lunaValue) {
     const nim = Number(lunaValue) / 100000;
     return nim.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) + ' NIM';
@@ -179,6 +194,103 @@ function renderMnemonicGrid(words, { title, subtitle, confirmText, showCountdown
                 <div class="keyguard-footer">
                     <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
                     <button id="btn-confirm" type="button" class="btn-primary">${escHtml(confirmText)}</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderMnemonicGridEnhanced(words, { title, subtitle, countdownSeconds }) {
+    const wordItems = words.map((word, i) => `
+        <div class="mnemonic-word">
+            <span class="word-number">${i + 1}</span>
+            <span class="word-text">${escHtml(word)}</span>
+        </div>`).join('');
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>${escHtml(title)}</h1>
+                    <p>${escHtml(subtitle)}</p>
+                </div>
+                <div class="keyguard-body">
+                    <div class="warning-banner">
+                        <span class="warning-icon">&#9888;</span>
+                        <span>Write these words on paper NOW. You will be asked to verify them next.</span>
+                    </div>
+                    <div class="mnemonic-grid">${wordItems}</div>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                    <button id="btn-confirm" type="button" class="btn-primary" disabled>
+                        Wait <span id="countdown">${countdownSeconds}</span>s
+                    </button>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderVerificationChallenge(challenges) {
+    const fields = challenges.map((c, i) => `
+        <div class="verify-field" data-index="${i}">
+            <label class="verify-label" for="verify-${i}">Word #${c.position}</label>
+            <input type="text" class="nq-input verify-input" id="verify-${i}"
+                placeholder="Type word #${c.position}" autocomplete="off"
+                autocapitalize="none" spellcheck="false" data-position="${c.position}">
+            <p class="error-text verify-error" id="verify-error-${i}" style="display:none;"></p>
+        </div>`).join('');
+
+    const dots = challenges.map((_, i) =>
+        `<span class="verify-dot" id="dot-${i}"></span>`
+    ).join('');
+
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Verify Your Backup</h1>
+                    <p>Enter the requested words to confirm you wrote them down.</p>
+                    <div class="verify-progress">${dots}</div>
+                </div>
+                <div class="keyguard-body">
+                    <div class="verify-fields">${fields}</div>
+                    <p class="error-text" id="error" style="display:none;"></p>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-back" type="button" class="btn-secondary">Show words again</button>
+                    <button id="btn-verify" type="button" class="btn-primary" disabled>Verify</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderAcknowledgment() {
+    const sentence = 'I understand my recovery words are my only backup';
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Important: Read Carefully</h1>
+                </div>
+                <div class="keyguard-body">
+                    <div class="warning-banner warning-banner-danger">
+                        <span class="warning-icon">&#9888;</span>
+                        <span>If this website becomes unavailable, your passkey will <strong>NOT</strong> be able to recover your funds. Your 24 recovery words are the <strong>ONLY</strong> way to restore access to your wallet.</span>
+                    </div>
+                    <div class="form-group" style="margin-top: 16px;">
+                        <label class="verify-label" for="ack-input">Type the following sentence to continue:</label>
+                        <p style="font-style:italic;color:var(--text-hint);font-size:13px;margin:6px 0 10px;">
+                            "${escHtml(sentence)}"
+                        </p>
+                        <textarea class="nq-input ack-sentence-input" id="ack-input" rows="2"
+                            placeholder="${escHtml(sentence)}" autocomplete="off"
+                            autocapitalize="none" spellcheck="false"></textarea>
+                        <div class="ack-match-display" id="ack-match"></div>
+                    </div>
+                    <p class="error-text" id="error" style="display:none;"></p>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-back" type="button" class="btn-secondary">Back</button>
+                    <button id="btn-confirm" type="button" class="btn-primary" disabled>Confirm</button>
                 </div>
             </div>
         </div>`;
@@ -534,6 +646,196 @@ function bumpAccountIndex() {
     return next;
 }
 
+// ── Mnemonic backup verification flow (3 screens) ────────────────────────
+
+function showEnhancedMnemonicScreen(words, walletData, prfKey, credentialId) {
+    const COUNTDOWN_SECONDS = 10;
+
+    setUI(renderMnemonicGridEnhanced(words, {
+        title: 'Your Recovery Words',
+        subtitle: 'Write these 24 words down on paper and store them safely.',
+        countdownSeconds: COUNTDOWN_SECONDS,
+    }));
+
+    const btnConfirm = ui.querySelector('#btn-confirm');
+    const countdownEl = ui.querySelector('#countdown');
+    let remaining = COUNTDOWN_SECONDS;
+
+    const interval = setInterval(() => {
+        remaining--;
+        if (countdownEl) countdownEl.textContent = remaining;
+        if (remaining <= 0) {
+            clearInterval(interval);
+            btnConfirm.disabled = false;
+            btnConfirm.textContent = "I've written them down";
+        }
+    }, 1000);
+
+    ui.querySelector('#btn-cancel').onclick = () => {
+        clearInterval(interval);
+        prfKey.fill(0);
+        words.fill('');
+        rejectSession('User cancelled');
+    };
+
+    btnConfirm.onclick = () => {
+        clearInterval(interval);
+        showVerificationScreen(words, walletData, prfKey, credentialId);
+    };
+}
+
+function showVerificationScreen(words, walletData, prfKey, credentialId) {
+    const CHALLENGE_COUNT = 3;
+    const indices = pickRandomIndices(words.length, CHALLENGE_COUNT);
+    const challenges = indices.map(idx => ({
+        position: idx + 1,
+        answer: words[idx],
+    }));
+
+    setUI(renderVerificationChallenge(challenges));
+
+    const inputs = challenges.map((_, i) => ui.querySelector(`#verify-${i}`));
+    const errors = challenges.map((_, i) => ui.querySelector(`#verify-error-${i}`));
+    const dots = challenges.map((_, i) => ui.querySelector(`#dot-${i}`));
+    const btnVerify = ui.querySelector('#btn-verify');
+
+    const correct = new Array(CHALLENGE_COUNT).fill(false);
+
+    function updateVerifyButton() {
+        const allCorrect = correct.every(Boolean);
+        btnVerify.disabled = !allCorrect;
+        if (allCorrect) {
+            btnVerify.classList.add('btn-verify-ready');
+        } else {
+            btnVerify.classList.remove('btn-verify-ready');
+        }
+    }
+
+    inputs.forEach((input, i) => {
+        input.addEventListener('input', () => {
+            const val = input.value.trim().toLowerCase();
+            const expected = challenges[i].answer.toLowerCase();
+
+            if (val === '') {
+                errors[i].style.display = 'none';
+                input.classList.remove('verify-correct', 'verify-wrong');
+                dots[i].classList.remove('dot-correct');
+                correct[i] = false;
+            } else if (val === expected) {
+                errors[i].style.display = 'none';
+                input.classList.remove('verify-wrong');
+                input.classList.add('verify-correct');
+                dots[i].classList.add('dot-correct');
+                correct[i] = true;
+            } else if (val.length >= expected.length) {
+                showError(errors[i], 'Incorrect. Check your written words.');
+                input.classList.remove('verify-correct');
+                input.classList.add('verify-wrong');
+                dots[i].classList.remove('dot-correct');
+                correct[i] = false;
+            } else {
+                errors[i].style.display = 'none';
+                input.classList.remove('verify-correct', 'verify-wrong');
+                dots[i].classList.remove('dot-correct');
+                correct[i] = false;
+            }
+
+            updateVerifyButton();
+        });
+    });
+
+    inputs[0].focus();
+
+    ui.querySelector('#btn-back').onclick = () => {
+        showEnhancedMnemonicScreen(words, walletData, prfKey, credentialId);
+    };
+
+    btnVerify.onclick = () => {
+        showAcknowledgmentScreen(words, walletData, prfKey, credentialId);
+    };
+}
+
+function showAcknowledgmentScreen(words, walletData, prfKey, credentialId) {
+    const REQUIRED_SENTENCE = 'I understand my recovery words are my only backup';
+
+    setUI(renderAcknowledgment());
+
+    const input = ui.querySelector('#ack-input');
+    const matchDisplay = ui.querySelector('#ack-match');
+    const btnConfirm = ui.querySelector('#btn-confirm');
+
+    input.addEventListener('input', () => {
+        const val = input.value;
+        const target = REQUIRED_SENTENCE;
+
+        // Build character-by-character match display
+        let correctLen = 0;
+        for (let i = 0; i < val.length && i < target.length; i++) {
+            if (val[i].toLowerCase() === target[i].toLowerCase()) {
+                correctLen++;
+            } else {
+                break;
+            }
+        }
+
+        const correctPart = target.substring(0, correctLen);
+        const wrongPart = val.substring(correctLen);
+        const remainingPart = target.substring(Math.max(correctLen, val.length));
+
+        matchDisplay.innerHTML = '';
+        if (correctPart) {
+            const span = document.createElement('span');
+            span.className = 'ack-match-correct';
+            span.textContent = correctPart;
+            matchDisplay.appendChild(span);
+        }
+        if (wrongPart) {
+            const span = document.createElement('span');
+            span.className = 'ack-match-wrong';
+            span.textContent = wrongPart;
+            matchDisplay.appendChild(span);
+        }
+        if (remainingPart) {
+            const span = document.createElement('span');
+            span.className = 'ack-match-remaining';
+            span.textContent = remainingPart;
+            matchDisplay.appendChild(span);
+        }
+
+        const isMatch = val.trim().toLowerCase() === target.toLowerCase();
+        btnConfirm.disabled = !isMatch;
+        if (isMatch) {
+            btnConfirm.classList.add('btn-verify-ready');
+        } else {
+            btnConfirm.classList.remove('btn-verify-ready');
+        }
+    });
+
+    input.focus();
+
+    ui.querySelector('#btn-back').onclick = () => {
+        showVerificationScreen(words, walletData, prfKey, credentialId);
+    };
+
+    btnConfirm.onclick = async () => {
+        setButtonState(btnConfirm, 'Saving...', true);
+        try {
+            await callWorker('saveWallet', {
+                prfKey: Array.from(prfKey),
+                credentialId: Array.from(credentialId),
+                prfSalt: Array.from(RESTORE_PRF_SALT),
+            });
+            prfKey.fill(0);
+            words.fill('');
+            bumpAccountIndex();
+            resolveSession({ address: walletData.address });
+        } catch (err) {
+            setButtonState(btnConfirm, 'Confirm', false);
+            showError(ui.querySelector('#error'), 'Failed to save wallet. Please try again.');
+        }
+    };
+}
+
 async function flowCreateWallet() {
     showUI();
 
@@ -569,28 +871,8 @@ async function flowCreateWallet() {
                 accountIndex,
             });
 
-            // Show mnemonic (derived from passkey — same on any device)
-            setUI(renderMnemonicGrid(walletData.mnemonic, {
-                title: 'Your Recovery Words',
-                subtitle: 'Write these 24 words down and store them safely. They are the only way to recover your wallet if you lose your passkey.',
-                confirmText: "I've saved my words",
-            }));
-
-            ui.querySelector('#btn-cancel').onclick = () => {
-                prfKey.fill(0);
-                rejectSession('User cancelled');
-            };
-            ui.querySelector('#btn-confirm').onclick = async () => {
-                setUI('');
-                await callWorker('saveWallet', {
-                    prfKey: Array.from(prfKey),
-                    credentialId: Array.from(credentialId),
-                    prfSalt: Array.from(RESTORE_PRF_SALT),
-                });
-                prfKey.fill(0);
-                bumpAccountIndex();
-                resolveSession({ address: walletData.address });
-            };
+            // Show mnemonic with verification challenge before saving
+            showEnhancedMnemonicScreen(walletData.mnemonic, walletData, prfKey, credentialId);
         } catch (err) {
             if (err.message === 'PRF_NOT_SUPPORTED') {
                 showError(errorEl, 'Your device does not support this feature.');
