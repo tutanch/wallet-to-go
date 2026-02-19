@@ -2,6 +2,8 @@ import { navigate } from '../router.js';
 import { getStoredAddress, getDerivedAddresses } from '../modules/keyguard-api.js';
 import { getActiveAddressIndex } from './dashboard-view.js';
 import { renderQr } from '../lib/qr-encoder.js';
+import { showToast } from '../modules/toast.js';
+import { enableSwipeBack } from '../modules/gestures.js';
 
 export async function receiveView() {
     const defaultAddress = await getStoredAddress();
@@ -49,9 +51,10 @@ export async function receiveView() {
     el.querySelector('#btn-copy').addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(address);
-            const btn = el.querySelector('#btn-copy');
-            btn.textContent = 'Copied!';
-            setTimeout(() => { btn.textContent = 'Copy Address'; }, 1500);
+            const display = el.querySelector('#address-copy');
+            display.classList.add('copied');
+            showToast('Address copied!', 'success');
+            setTimeout(() => display.classList.remove('copied'), 600);
         } catch {
             // Clipboard API may fail without HTTPS or permissions
         }
@@ -60,6 +63,10 @@ export async function receiveView() {
     el.querySelector('#address-copy').addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(address);
+            const display = el.querySelector('#address-copy');
+            display.classList.add('copied');
+            showToast('Address copied!', 'success');
+            setTimeout(() => display.classList.remove('copied'), 600);
         } catch {
             // Clipboard API may fail without HTTPS or permissions
         }
@@ -70,11 +77,14 @@ export async function receiveView() {
         const container = el.querySelector('#qr-container');
         if (container) {
             const canvas = document.createElement('canvas');
+            const styles = getComputedStyle(document.documentElement);
+            const qrFill = styles.getPropertyValue('--color-qr-fill').trim() || '#1F2348';
+            const qrBg = styles.getPropertyValue('--color-qr-bg').trim() || '#ffffff';
             renderQr({
                 text: `nimiq:${address.replace(/ /g, '')}`,
                 radius: 0.4,
-                fill: '#1F2348',
-                background: '#ffffff',
+                fill: qrFill,
+                background: qrBg,
                 size: 200,
             }, canvas);
             canvas.id = 'qr-canvas';
@@ -82,5 +92,6 @@ export async function receiveView() {
         }
     }, 0);
 
-    return el;
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    return { element: el, cleanup: cleanupSwipe };
 }

@@ -3,6 +3,8 @@ import { getStoredAddress, getDerivedAddresses } from '../modules/keyguard-api.j
 import * as network from '../modules/network-client.js';
 import { formatNim, getSelectedNetwork } from '../config.js';
 import { renderTxItem } from './history-view.js';
+import { showToast } from '../modules/toast.js';
+import { enablePullToRefresh } from '../modules/gestures.js';
 
 // ── Active address index (persists across navigations) ───────────
 export function getActiveAddressIndex() {
@@ -281,9 +283,10 @@ export async function dashboardView() {
     el.querySelector('#address-copy').addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(currentAddress);
-            const original = $address.textContent;
-            $address.textContent = 'Copied!';
-            setTimeout(() => { $address.textContent = original; }, 1500);
+            const display = el.querySelector('#address-copy');
+            display.classList.add('copied');
+            showToast('Address copied!', 'success');
+            setTimeout(() => display.classList.remove('copied'), 600);
         } catch {
             // Clipboard API may fail without HTTPS or permissions
         }
@@ -303,7 +306,13 @@ export async function dashboardView() {
         $consensus.className = `consensus-indicator ${consensusClass}`;
         $consensus.textContent = consensusText;
 
-        $balance.textContent = cache.balance !== null ? formatNim(cache.balance) : '...';
+        if (cache.balance !== null) {
+            $balance.textContent = formatNim(cache.balance);
+            $balance.classList.remove('skeleton', 'skeleton-balance');
+        } else {
+            $balance.textContent = '\u00A0';
+            $balance.classList.add('skeleton', 'skeleton-balance');
+        }
 
         if (cache.headHeight) {
             $blockHeight.textContent = `Block #${cache.headHeight.toLocaleString()}`;
@@ -318,16 +327,34 @@ export async function dashboardView() {
                 $txList.appendChild(renderTxItem(tx, currentAddress));
             });
             $btnAllTxs.style.display = '';
+        } else if (cache.consensus !== 'established') {
+            for (let i = 0; i < 3; i++) {
+                const skel = document.createElement('div');
+                skel.className = 'skeleton skeleton-tx';
+                $txList.appendChild(skel);
+            }
+            $btnAllTxs.style.display = 'none';
         } else {
             const placeholder = document.createElement('p');
             placeholder.className = 'nq-text no-txs';
-            placeholder.textContent = cache.consensus === 'established'
-                ? 'No transactions yet'
-                : 'Waiting for consensus...';
+            placeholder.textContent = 'No transactions yet';
             $txList.appendChild(placeholder);
             $btnAllTxs.style.display = 'none';
         }
     }
+
+    // Pull-to-refresh
+    const cardBody = el.querySelector('.nq-card-body');
+    const cleanupPull = enablePullToRefresh(cardBody, async () => {
+        try {
+            cache.balance = await network.getBalance(currentAddress);
+            cache.recentTxs = await network.getHistory(currentAddress, 10);
+            cache.headHeight = await network.getHeadHeight();
+            update();
+        } catch (e) {
+            console.error('Refresh failed:', e);
+        }
+    });
 
     // Render immediately from cache, subscribe to background updates
     viewUpdate = update;
@@ -338,6 +365,7 @@ export async function dashboardView() {
         cleanup: () => {
             viewUpdate = null;
             closePicker();
+            cleanupPull();
         },
     };
 }

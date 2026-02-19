@@ -71,6 +71,12 @@ function showDisclaimer() {
 
 async function init() {
     try {
+        // Apply stored theme preference before first render
+        const storedTheme = localStorage.getItem('nimiq-theme');
+        if (storedTheme === 'light' || storedTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', storedTheme);
+        }
+
         // Show disclaimer before anything else
         await showDisclaimer();
 

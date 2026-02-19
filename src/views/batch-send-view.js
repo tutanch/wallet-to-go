@@ -4,6 +4,7 @@ import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { nimToLuna, lunaToNim, formatNim, getNetworkConfig } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
+import { enableSwipeBack } from '../modules/gestures.js';
 
 export async function batchSendView() {
     const defaultAddress = await getStoredAddress();
@@ -442,8 +443,9 @@ export async function batchSendView() {
         return s.substring(0, 9) + '...' + s.substring(s.length - 9);
     }
 
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
     return {
         element: el,
-        cleanup: () => { stopRequested = true; },
+        cleanup: () => { stopRequested = true; cleanupSwipe(); },
     };
 }

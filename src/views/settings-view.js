@@ -2,12 +2,14 @@ import { navigate } from '../router.js';
 import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount } from '../modules/keyguard-api.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
+import { enableSwipeBack } from '../modules/gestures.js';
 
 export function settingsView() {
     const el = document.createElement('div');
     el.className = 'view-container';
 
     const currentNetwork = getSelectedNetwork();
+    const currentTheme = localStorage.getItem('nimiq-theme') || 'auto';
 
     el.innerHTML = `
         <div class="nq-card">
@@ -15,6 +17,15 @@ export function settingsView() {
                 <h1 class="nq-h1">Settings</h1>
             </div>
             <div class="nq-card-body">
+                <div class="settings-section">
+                    <h2 class="nq-label">Appearance</h2>
+                    <div class="network-toggle">
+                        <button class="nq-button-s ${currentTheme === 'auto' ? 'selected' : ''}" id="btn-theme-auto">Auto</button>
+                        <button class="nq-button-s ${currentTheme === 'light' ? 'selected' : ''}" id="btn-theme-light">Light</button>
+                        <button class="nq-button-s ${currentTheme === 'dark' ? 'selected' : ''}" id="btn-theme-dark">Dark</button>
+                    </div>
+                </div>
+
                 <div class="settings-section">
                     <h2 class="nq-label">Network</h2>
                     <div class="network-toggle">
@@ -66,6 +77,22 @@ export function settingsView() {
     if (faucetLink) faucetLink.href = NETWORKS.test.faucetUrl;
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
+
+    // Theme toggle
+    function applyTheme(theme) {
+        localStorage.setItem('nimiq-theme', theme);
+        if (theme === 'auto') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        el.querySelectorAll('#btn-theme-auto, #btn-theme-light, #btn-theme-dark').forEach(b => b.classList.remove('selected'));
+        el.querySelector(`#btn-theme-${theme}`).classList.add('selected');
+    }
+
+    el.querySelector('#btn-theme-auto').addEventListener('click', () => applyTheme('auto'));
+    el.querySelector('#btn-theme-light').addEventListener('click', () => applyTheme('light'));
+    el.querySelector('#btn-theme-dark').addEventListener('click', () => applyTheme('dark'));
 
     // Network toggle
     el.querySelector('#btn-mainnet').addEventListener('click', async () => {
@@ -225,5 +252,6 @@ export function settingsView() {
         }
     });
 
-    return el;
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    return { element: el, cleanup: cleanupSwipe };
 }

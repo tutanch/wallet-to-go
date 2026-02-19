@@ -3,6 +3,7 @@ import { getStoredAddress, getDerivedAddresses } from '../modules/keyguard-api.j
 import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { formatNim } from '../config.js';
+import { enableSwipeBack } from '../modules/gestures.js';
 
 export async function historyView() {
     const defaultAddress = await getStoredAddress();
@@ -30,9 +31,7 @@ export async function historyView() {
                 <h1 class="nq-h1">Transaction History</h1>
             </div>
             <div class="nq-card-body">
-                <div class="tx-list" id="tx-list">
-                    <p class="nq-text loading-text">Loading transactions...</p>
-                </div>
+                <div class="tx-list" id="tx-list"></div>
             </div>
             <div class="nq-card-footer">
                 <button class="nq-button-s" id="btn-back">Back</button>
@@ -41,6 +40,14 @@ export async function historyView() {
     `;
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
+
+    // Show skeleton placeholders while loading
+    const txList = el.querySelector('#tx-list');
+    for (let i = 0; i < 5; i++) {
+        const skel = document.createElement('div');
+        skel.className = 'skeleton skeleton-tx';
+        txList.appendChild(skel);
+    }
 
     // Fetch transactions
     try {
@@ -64,7 +71,8 @@ export async function historyView() {
         txList.appendChild(errorP);
     }
 
-    return el;
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    return { element: el, cleanup: cleanupSwipe };
 }
 
 // Build tx items with DOM API (not innerHTML) to prevent XSS from network data

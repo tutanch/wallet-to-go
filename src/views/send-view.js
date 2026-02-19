@@ -4,6 +4,8 @@ import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { nimToLuna, getNetworkConfig } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
+import { showToast } from '../modules/toast.js';
+import { enableSwipeBack } from '../modules/gestures.js';
 
 export async function sendView() {
     const defaultAddress = await getStoredAddress();
@@ -154,6 +156,7 @@ export async function sendView() {
             successEl.style.display = '';
             el.querySelector('#tx-hash').textContent = `TX: ${result.transactionHash.substring(0, 16)}...`;
             btn.textContent = 'Done';
+            showToast('Transaction sent!', 'success');
 
             setTimeout(() => navigate('#dashboard'), 3000);
         } catch (e) {
@@ -177,5 +180,6 @@ export async function sendView() {
         }
     });
 
-    return el;
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    return { element: el, cleanup: cleanupSwipe };
 }
