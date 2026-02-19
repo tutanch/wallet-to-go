@@ -98,8 +98,9 @@ window.addEventListener('message', (event) => {
 
 // Commands that show keyguard UI — iframe must be visible for user interaction.
 const UI_COMMANDS = new Set([
-    'createWallet', 'importWallet', 'signTransaction', 'exportMnemonic',
-    'deleteWallet', 'unlock', 'restoreWithPasskey', 'registerWebAuthn', 'removeWebAuthn',
+    'createWallet', 'importWallet', 'signTransaction', 'signBatchTransaction',
+    'exportMnemonic', 'deleteWallet', 'unlock', 'restoreWithPasskey',
+    'registerWebAuthn', 'removeWebAuthn',
 ]);
 
 function call(command, args, timeoutMs = 120000) {
@@ -176,6 +177,15 @@ export function signTransaction({ senderAddress, recipientAddress, value, fee, m
         validityStartHeight,
         networkId,
     });
+}
+
+/**
+ * Sign batch transactions. Keyguard shows batch confirmation + password/biometric entry.
+ * Signs all transactions with one authentication.
+ * Returns { serializedTransactions: Uint8Array[] }.
+ */
+export function signBatchTransaction({ senderAddress, transactions }) {
+    return call('signBatchTransaction', { senderAddress, transactions }, 300000);
 }
 
 /**

@@ -434,6 +434,69 @@ const handlers = {
         }
     },
 
+    async signBatchTransaction({ senderAddress, transactions, password, prfKey }) {
+        await ensureWasm();
+
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+        if (!Array.isArray(transactions) || transactions.length === 0) {
+            throw new Error('No transactions provided');
+        }
+
+        let entropy;
+        if (prfKey) {
+            entropy = await decryptWithPrfKey(record, prfKey);
+        } else {
+            const passwordBuf = new TextEncoder().encode(password);
+            try {
+                entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+            } catch (_) {
+                throw new Error('Wrong password');
+            } finally {
+                passwordBuf.fill(0);
+            }
+        }
+
+        let masterKey, childKey, privateKey, publicKey;
+        const signatures = []; // track for cleanup
+        try {
+            const sender = Address.fromString(senderAddress);
+            masterKey = entropy.toExtendedPrivateKey();
+            childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
+            privateKey = childKey.privateKey;
+            publicKey = PublicKey.derive(privateKey);
+
+            const serializedTransactions = [];
+            for (const txParams of transactions) {
+                const msgBytes = txParams.message
+                    ? new TextEncoder().encode(txParams.message)
+                    : new Uint8Array(0);
+                if (msgBytes.length > 64) throw new Error('Message exceeds 64 bytes');
+
+                const recipient = Address.fromString(txParams.recipientAddress);
+                const tx = TransactionBuilder.newBasicWithData(
+                    sender, recipient, msgBytes,
+                    BigInt(txParams.value), BigInt(txParams.fee),
+                    txParams.validityStartHeight, txParams.networkId,
+                );
+
+                const sig = Signature.create(privateKey, publicKey, tx.serializeContent());
+                signatures.push(sig);
+                tx.proof = SignatureProof.singleSig(publicKey, sig).serialize();
+                serializedTransactions.push(tx.serialize());
+            }
+
+            return { serializedTransactions };
+        } finally {
+            for (const sig of signatures) freeWasm(sig);
+            freeWasm(publicKey);
+            freeWasm(privateKey);
+            try { if (childKey?._chainCode) childKey._chainCode.fill(0); } catch (_) {}
+            freeExtendedKey(masterKey);
+            zeroEntropy(entropy);
+        }
+    },
+
     async exportMnemonic({ password, prfKey }) {
         await ensureWasm();
         const record = await getRecord();
@@ -664,6 +727,9 @@ self.onmessage = async (e) => {
         const transfer = [];
         if (result && result.serializedTx) {
             transfer.push(result.serializedTx.buffer);
+        }
+        if (result && result.serializedTransactions) {
+            for (const tx of result.serializedTransactions) transfer.push(tx.buffer);
         }
 
         self.postMessage({ id, result }, transfer);

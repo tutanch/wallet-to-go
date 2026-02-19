@@ -750,6 +750,130 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* ---- Batch Send view ---- */
+.batch-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+}
+
+.batch-summary-item {
+    flex: 1;
+    min-width: 70px;
+    padding: 10px 6px;
+    background: rgba(31, 35, 72, 0.05);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.batch-summary-item .num {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1F2348;
+    font-family: 'Fira Mono', monospace;
+}
+
+.batch-summary-item .lbl {
+    font-size: 10px;
+    color: rgba(31, 35, 72, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+}
+
+.batch-table-container {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 12px 0;
+    border: 1px solid rgba(31, 35, 72, 0.08);
+    border-radius: 8px;
+}
+
+.batch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.batch-table th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(31, 35, 72, 0.5);
+    border-bottom: 1px solid rgba(31, 35, 72, 0.08);
+    position: sticky;
+    top: 0;
+    background: white;
+}
+
+.batch-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(31, 35, 72, 0.04);
+    font-family: 'Fira Mono', monospace;
+    font-size: 12px;
+}
+
+.batch-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'Muli', system-ui, sans-serif;
+}
+
+.batch-badge-pending {
+    background: rgba(31, 35, 72, 0.08);
+    color: rgba(31, 35, 72, 0.5);
+}
+
+.batch-badge-sending {
+    background: rgba(5, 130, 202, 0.1);
+    color: #0582CA;
+}
+
+.batch-badge-sent {
+    background: rgba(33, 188, 165, 0.1);
+    color: #21BCA5;
+}
+
+.batch-badge-failed {
+    background: rgba(217, 68, 50, 0.1);
+    color: #D94432;
+}
+
+.action-buttons-secondary {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.file-upload-wrapper {
+    margin-top: 8px;
+}
+
+.file-upload-label {
+    display: inline-block;
+    padding: 6px 14px;
+    background: rgba(31, 35, 72, 0.05);
+    border: 2px dashed rgba(31, 35, 72, 0.15);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(31, 35, 72, 0.6);
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.file-upload-label:hover {
+    border-color: #0582CA;
+    background: rgba(5, 130, 202, 0.05);
+}
+
 /* ---- Tablet+ (>= 480px) ---- */
 @media (min-width: 480px) {
     body {

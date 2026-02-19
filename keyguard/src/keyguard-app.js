@@ -273,6 +273,40 @@ function renderTxConfirm({ amount, recipient, message, fee }) {
         </div>`;
 }
 
+function renderBatchTxConfirm({ recipientCount, amountEach, feeEach, totalFees, totalCost }) {
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Confirm Batch Transaction</h1>
+                    <p class="tx-amount-large">${escHtml(totalCost)}</p>
+                </div>
+                <div class="keyguard-body">
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Recipients</span>
+                        <span class="tx-value">${escHtml(String(recipientCount))} addresses</span>
+                    </div>
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Amount Each</span>
+                        <span class="tx-value">${escHtml(amountEach)}</span>
+                    </div>
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Fee Each</span>
+                        <span class="tx-value">${escHtml(feeEach)}</span>
+                    </div>
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Total Fees</span>
+                        <span class="tx-value">${escHtml(totalFees)}</span>
+                    </div>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                    <button id="btn-confirm" type="button" class="btn-primary">Confirm &amp; Sign All</button>
+                </div>
+            </div>
+        </div>`;
+}
+
 function renderDeleteConfirm({ showPassword = true } = {}) {
     return `
         <div class="keyguard-container">
@@ -843,6 +877,148 @@ function showBiometricForSign(args, info, formattedAmount, truncatedRecipient) {
     };
 }
 
+// ── Batch transaction signing flow ───────────────────────────────────────
+
+async function flowSignBatchTransaction(args) {
+    showUI();
+
+    if (!Array.isArray(args.transactions) || args.transactions.length === 0) {
+        rejectSession('No transactions provided');
+        return;
+    }
+
+    const count = args.transactions.length;
+    const firstTx = args.transactions[0];
+    const amountEach = formatLuna(firstTx.value);
+    const feeEach = formatLuna(firstTx.fee);
+    const totalAmount = Number(firstTx.value) * count;
+    const totalFee = Number(firstTx.fee) * count;
+    const totalCost = formatLuna(totalAmount + totalFee);
+    const totalFees = formatLuna(totalFee);
+
+    setUI(renderBatchTxConfirm({
+        recipientCount: count,
+        amountEach,
+        feeEach,
+        totalFees,
+        totalCost,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#btn-confirm').onclick = async () => {
+        setUI('');
+
+        const info = await callWorker('getWebAuthnInfo');
+        const passwordSet = await callWorker('hasPassword');
+
+        const subtitle = `Batch: ${count} transactions, ${amountEach} each`;
+
+        if (info.hasWebAuthn && passwordSet) {
+            setUI(renderUnlockChoice('Authenticate to Sign', subtitle));
+
+            ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+            ui.querySelector('#btn-biometric').onclick = async () => {
+                const btn = ui.querySelector('#btn-biometric');
+                const errorEl = ui.querySelector('#error');
+                setButtonState(btn, 'Signing...', true);
+
+                try {
+                    const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                    const { serializedTransactions } = await callWorker('signBatchTransaction', {
+                        ...args, prfKey: Array.from(prfKey),
+                    });
+                    prfKey.fill(0);
+                    const transfer = serializedTransactions.map(tx => tx.buffer);
+                    resolveSession({ serializedTransactions }, transfer);
+                } catch (err) {
+                    setButtonState(btn, 'Use Biometric / Passkey', false);
+                    if (err.name === 'NotAllowedError') {
+                        showError(errorEl, 'Authentication cancelled. Try again or use password.');
+                    } else {
+                        showError(errorEl, 'Signing failed. Try again or use password.');
+                    }
+                }
+            };
+
+            ui.querySelector('#btn-password').onclick = () => {
+                setUI('');
+                showPasswordFormForBatchSign(args, subtitle);
+            };
+        } else if (info.hasWebAuthn) {
+            showBiometricForBatchSign(args, info, subtitle);
+        } else {
+            showPasswordFormForBatchSign(args, subtitle);
+        }
+    };
+}
+
+function showPasswordFormForBatchSign(args, subtitle) {
+    setUI(renderPasswordForm({
+        title: 'Enter Password to Sign',
+        subtitle,
+        isNew: false,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Signing...', true);
+        try {
+            const { serializedTransactions } = await callWorker('signBatchTransaction', {
+                ...args, password: pw,
+            });
+            ui.querySelector('#password').value = '';
+            const transfer = serializedTransactions.map(tx => tx.buffer);
+            resolveSession({ serializedTransactions }, transfer);
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            const msg = err.message?.includes('Wrong password')
+                ? 'Wrong password.'
+                : 'Signing failed. Please try again.';
+            showError(ui.querySelector('#error'), msg);
+        }
+    });
+}
+
+function showBiometricForBatchSign(args, info, subtitle) {
+    setUI(renderUnlockChoice('Authenticate to Sign', subtitle));
+
+    const pwBtn = ui.querySelector('#btn-password');
+    if (pwBtn) pwBtn.style.display = 'none';
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+    ui.querySelector('#btn-biometric').onclick = async () => {
+        const btn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
+        setButtonState(btn, 'Signing...', true);
+
+        try {
+            const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+            const { serializedTransactions } = await callWorker('signBatchTransaction', {
+                ...args, prfKey: Array.from(prfKey),
+            });
+            prfKey.fill(0);
+            const transfer = serializedTransactions.map(tx => tx.buffer);
+            resolveSession({ serializedTransactions }, transfer);
+        } catch (err) {
+            setButtonState(btn, 'Use Biometric / Passkey', false);
+            if (err.name === 'NotAllowedError') {
+                showError(errorEl, 'Authentication cancelled. Try again.');
+            } else {
+                showError(errorEl, 'Signing failed. Try again.');
+            }
+        }
+    };
+}
+
 function showExportedWords(words) {
     setUI(renderMnemonicGrid(words, {
         title: 'Your Recovery Words',
@@ -1386,6 +1562,7 @@ window.addEventListener('message', async (event) => {
         case 'createWallet':     flowCreateWallet(); break;
         case 'importWallet':     flowImportWallet(); break;
         case 'signTransaction':  flowSignTransaction(args || {}); break;
+        case 'signBatchTransaction': flowSignBatchTransaction(args || {}); break;
         case 'exportMnemonic':   flowExportMnemonic(); break;
         case 'deleteWallet':     flowDeleteWallet(); break;
         case 'unlock':           flowUnlock(); break;
