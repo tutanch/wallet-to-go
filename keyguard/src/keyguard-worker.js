@@ -290,6 +290,20 @@ const handlers = {
         };
     },
 
+    async createWalletFromPrf({ prfKey }) {
+        await ensureWasm();
+        const derivedBytes = await deriveEntropyFromPrf(prfKey);
+        const entropy = new Entropy(derivedBytes);
+        derivedBytes.fill(0);
+        const mnemonic = MnemonicUtils.entropyToMnemonic(entropy);
+        const address = deriveAddress(entropy);
+        pendingEntropy = entropy;
+        return {
+            mnemonic: Array.isArray(mnemonic) ? mnemonic : mnemonic.split(' '),
+            address: address.toUserFriendlyAddress(),
+        };
+    },
+
     async saveWallet({ password, prfKey, credentialId, prfSalt }) {
         await ensureWasm();
         if (!pendingEntropy) throw new Error('No pending wallet to save');

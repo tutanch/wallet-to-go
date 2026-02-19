@@ -519,7 +519,74 @@ function setUI(html) {
 async function flowCreateWallet() {
     showUI();
 
-    // Generate entropy + mnemonic in the worker
+    const prfSupported = await isPrfSupported();
+
+    if (prfSupported) {
+        // Offer passkey first — wallet entropy is derived deterministically from
+        // the PRF output, so the same passkey reproduces the same wallet on any device.
+        setUI(renderWebAuthnPrompt());
+
+        ui.querySelector('#btn-skip').onclick = () => {
+            // User skipped passkey → random entropy + password
+            setUI('');
+            flowCreateWalletRandom();
+        };
+
+        ui.querySelector('#btn-enable').onclick = async () => {
+            const btn = ui.querySelector('#btn-enable');
+            const errorEl = ui.querySelector('#error');
+            setButtonState(btn, 'Registering...', true);
+
+            try {
+                const userId = crypto.getRandomValues(new Uint8Array(16));
+                const { credentialId, prfKey } = await createWebAuthnCredential(
+                    userId, 'Nimiq Wallet', RESTORE_PRF_SALT,
+                );
+
+                // Derive wallet deterministically from PRF output
+                const walletData = await callWorker('createWalletFromPrf', {
+                    prfKey: Array.from(prfKey),
+                });
+
+                // Show mnemonic (derived from passkey — same on any device)
+                setUI(renderMnemonicGrid(walletData.mnemonic, {
+                    title: 'Your Recovery Words',
+                    subtitle: 'Write these 24 words down and store them safely. They are the only way to recover your wallet if you lose your passkey.',
+                    confirmText: "I've saved my words",
+                }));
+
+                ui.querySelector('#btn-cancel').onclick = () => {
+                    prfKey.fill(0);
+                    rejectSession('User cancelled');
+                };
+                ui.querySelector('#btn-confirm').onclick = async () => {
+                    setUI('');
+                    await callWorker('saveWallet', {
+                        prfKey: Array.from(prfKey),
+                        credentialId: Array.from(credentialId),
+                        prfSalt: Array.from(RESTORE_PRF_SALT),
+                    });
+                    prfKey.fill(0);
+                    resolveSession({ address: walletData.address });
+                };
+            } catch (err) {
+                if (err.message === 'PRF_NOT_SUPPORTED') {
+                    showError(errorEl, 'Your device does not support this feature.');
+                } else if (err.name === 'NotAllowedError') {
+                    showError(errorEl, 'Registration was cancelled or timed out.');
+                } else {
+                    showError(errorEl, 'Could not set up biometric unlock.');
+                }
+                setButtonState(btn, 'Try Again', false);
+            }
+        };
+    } else {
+        // No PRF support → random entropy + password
+        flowCreateWalletRandom();
+    }
+}
+
+async function flowCreateWalletRandom() {
     let walletData;
     try {
         walletData = await callWorker('createWallet');
@@ -527,7 +594,6 @@ async function flowCreateWallet() {
         return rejectSession(e.message);
     }
 
-    // Step 1: Show 24 mnemonic words
     setUI(renderMnemonicGrid(walletData.mnemonic, {
         title: 'Your Recovery Words',
         subtitle: 'Write these 24 words down and store them safely. They are the only way to recover your wallet.',
@@ -535,58 +601,9 @@ async function flowCreateWallet() {
     }));
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-confirm').onclick = async () => {
-        // Clear mnemonic from DOM
+    ui.querySelector('#btn-confirm').onclick = () => {
         setUI('');
-
-        const prfSupported = await isPrfSupported();
-
-        if (prfSupported) {
-            // Step 2a: Offer passkey first (password is optional)
-            setUI(renderWebAuthnPrompt());
-
-            ui.querySelector('#btn-skip').onclick = () => {
-                // User skipped passkey → fall through to password
-                setUI('');
-                showCreatePasswordForm(walletData);
-            };
-
-            ui.querySelector('#btn-enable').onclick = async () => {
-                const btn = ui.querySelector('#btn-enable');
-                const errorEl = ui.querySelector('#error');
-                setButtonState(btn, 'Registering...', true);
-
-                try {
-                    const prfSalt = generatePrfSalt();
-                    const userId = new TextEncoder().encode(walletData.address.substring(0, 32));
-                    const { credentialId, prfKey } = await createWebAuthnCredential(
-                        userId, walletData.address, prfSalt,
-                    );
-
-                    // Save wallet with passkey only (no password)
-                    await callWorker('saveWallet', {
-                        prfKey: Array.from(prfKey),
-                        credentialId: Array.from(credentialId),
-                        prfSalt: Array.from(prfSalt),
-                    });
-
-                    prfKey.fill(0);
-                    resolveSession({ address: walletData.address });
-                } catch (err) {
-                    if (err.message === 'PRF_NOT_SUPPORTED') {
-                        showError(errorEl, 'Your device does not support this feature.');
-                    } else if (err.name === 'NotAllowedError') {
-                        showError(errorEl, 'Registration was cancelled or timed out.');
-                    } else {
-                        showError(errorEl, 'Could not set up biometric unlock.');
-                    }
-                    setButtonState(btn, 'Try Again', false);
-                }
-            };
-        } else {
-            // Step 2b: No PRF support → password required
-            showCreatePasswordForm(walletData);
-        }
+        showCreatePasswordForm(walletData);
     };
 }
 
