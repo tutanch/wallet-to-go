@@ -58,6 +58,12 @@ export const keyguardReady = new Promise((resolve, reject) => {
     if (frame) frame.addEventListener('load', ping); // cover the still-loading case
 });
 
+// ── Address cache ────────────────────────────────────────────────────────
+// Avoids repeated cross-origin postMessage round-trips for hasKey/getStoredAddress.
+// Invalidated on deleteWallet, set on create/import/restore.
+
+let cachedAddress = null;
+
 // ── Session tracking ───────────────────────────────────────────────────────
 
 let sessionId = 0;
@@ -135,22 +141,28 @@ function call(command, args, timeoutMs = 120000) {
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
-/** Check if a wallet exists. Transparent passthrough — no UI shown. */
+/** Check if a wallet exists. Returns cached result after first positive check. */
 export function hasKey() {
+    if (cachedAddress !== null) return Promise.resolve(true);
     return call('hasKey', null, 15000);
 }
 
-/** Get stored wallet address. Transparent passthrough — no UI shown. */
-export function getStoredAddress() {
-    return call('getStoredAddress', null, 15000);
+/** Get stored wallet address. Returns cached result after first fetch. */
+export async function getStoredAddress() {
+    if (cachedAddress !== null) return cachedAddress;
+    const address = await call('getStoredAddress', null, 15000);
+    if (address) cachedAddress = address;
+    return address;
 }
 
 /**
  * Create new wallet. Keyguard shows mnemonic display + password entry.
  * Returns { address }.
  */
-export function createWallet() {
-    return call('createWallet');
+export async function createWallet() {
+    const result = await call('createWallet');
+    if (result?.address) cachedAddress = result.address;
+    return result;
 }
 
 /**
@@ -158,8 +170,10 @@ export function createWallet() {
  * No args — user enters words and password inside the keyguard.
  * Returns { address }.
  */
-export function importWallet() {
-    return call('importWallet');
+export async function importWallet() {
+    const result = await call('importWallet');
+    if (result?.address) cachedAddress = result.address;
+    return result;
 }
 
 /**
@@ -201,8 +215,10 @@ export function exportMnemonic() {
  * Delete wallet. Keyguard shows password + "DELETE" confirmation.
  * Returns { success: true }.
  */
-export function deleteWallet() {
-    return call('deleteWallet');
+export async function deleteWallet() {
+    const result = await call('deleteWallet');
+    cachedAddress = null;
+    return result;
 }
 
 /**
@@ -218,8 +234,10 @@ export function unlock() {
  * Works cross-device via iCloud-synced passkeys.
  * Returns { address }.
  */
-export function restoreWithPasskey() {
-    return call('restoreWithPasskey');
+export async function restoreWithPasskey() {
+    const result = await call('restoreWithPasskey');
+    if (result?.address) cachedAddress = result.address;
+    return result;
 }
 
 /** Check if WebAuthn is configured. Transparent passthrough — no UI shown. */
