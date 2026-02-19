@@ -4,6 +4,7 @@
 import init, {
     Address,
     Hash,
+    PrivateKey,
     PublicKey,
     Signature,
     SignatureProof,
@@ -485,10 +486,12 @@ const handlers = {
 
             const serializedTransactions = [];
             for (const txParams of transactions) {
-                const msgBytes = txParams.message
-                    ? new TextEncoder().encode(txParams.message)
-                    : new Uint8Array(0);
-                if (msgBytes.length > 64) throw new Error('Message exceeds 64 bytes');
+                const msgBytes = txParams.extraData
+                    ? new Uint8Array(txParams.extraData)
+                    : txParams.message
+                        ? new TextEncoder().encode(txParams.message)
+                        : new Uint8Array(0);
+                if (msgBytes.length > 64) throw new Error('Data exceeds 64 bytes');
 
                 const recipient = Address.fromString(txParams.recipientAddress);
                 const tx = TransactionBuilder.newBasicWithData(
@@ -702,6 +705,31 @@ const handlers = {
         const request = tx.objectStore(STORE_NAME).put(record);
         await txPromise(request, tx);
         return { success: true };
+    },
+
+    async generateCashlinkKeys({ count }) {
+        await ensureWasm();
+        if (!Number.isInteger(count) || count < 1 || count > 100) {
+            throw new Error('Count must be between 1 and 100');
+        }
+
+        const keys = [];
+        for (let i = 0; i < count; i++) {
+            const pk = PrivateKey.generate();
+            let publicKey;
+            try {
+                publicKey = PublicKey.derive(pk);
+                const address = publicKey.toAddress();
+                keys.push({
+                    address: address.toUserFriendlyAddress(),
+                    privateKeyBytes: Array.from(pk.serialize()),
+                });
+            } finally {
+                freeWasm(pk);
+                freeWasm(publicKey);
+            }
+        }
+        return { keys };
     },
 };
 

@@ -11,7 +11,7 @@ const PUBLIC_ROUTES = new Set(['#welcome', '#create', '#import']);
 const ROUTE_DEPTH = {
     '#welcome': 0, '#lock': 0,
     '#create': 1, '#import': 1, '#dashboard': 1,
-    '#send': 2, '#receive': 2, '#history': 2, '#settings': 2, '#batch-send': 2,
+    '#send': 2, '#receive': 2, '#history': 2, '#settings': 2, '#batch-send': 2, '#cashlinks': 2,
 };
 
 export function registerRoute(hash, viewFactory) {

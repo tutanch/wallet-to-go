@@ -151,6 +151,7 @@ export async function dashboardView() {
                 </div>
                 <div class="action-buttons-secondary">
                     <button class="nq-button-s" id="btn-batch-send">Batch Send</button>
+                    <button class="nq-button-s" id="btn-cashlinks">Cashlinks</button>
                 </div>
                 <div class="recent-txs">
                     <div class="section-header">
@@ -292,6 +293,7 @@ export async function dashboardView() {
     el.querySelector('#btn-send').addEventListener('click', () => navigate('#send'));
     el.querySelector('#btn-receive').addEventListener('click', () => navigate('#receive'));
     el.querySelector('#btn-batch-send').addEventListener('click', () => navigate('#batch-send'));
+    el.querySelector('#btn-cashlinks').addEventListener('click', () => navigate('#cashlinks'));
     el.querySelector('#btn-settings').addEventListener('click', () => navigate('#settings'));
     $btnAllTxs.addEventListener('click', () => navigate('#history'));
 

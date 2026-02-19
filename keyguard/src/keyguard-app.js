@@ -1822,10 +1822,10 @@ window.addEventListener('message', async (event) => {
     if (!Number.isInteger(sessionId)) return;
 
     // Transparent passthroughs: no UI, immediate response via worker
-    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword', 'getDerivedAddresses'];
+    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword', 'getDerivedAddresses', 'generateCashlinkKeys'];
     if (PASSTHROUGH_COMMANDS.includes(command)) {
         try {
-            const result = await callWorker(command);
+            const result = await callWorker(command, args);
             event.source.postMessage({ type: 'result', sessionId, result }, WALLET_ORIGIN);
         } catch (e) {
             event.source.postMessage({ type: 'error', sessionId, error: e.message }, WALLET_ORIGIN);

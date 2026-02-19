@@ -1091,7 +1091,64 @@ body {
 .action-buttons-secondary {
     display: flex;
     justify-content: center;
+    gap: 8px;
     margin-bottom: 20px;
+}
+
+/* ── Cashlink results ──────────────────────────────────────── */
+
+.cashlink-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.cashlink-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.cashlink-item {
+    background: var(--color-bg-hover);
+    border: 1px solid var(--color-border-medium);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.cashlink-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cashlink-url {
+    font-family: 'Fira Mono', monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+    padding: 6px;
+    background: var(--color-bg-active);
+    border-radius: 4px;
+    line-height: 1.4;
+}
+
+.cashlink-qr {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0;
+}
+
+.cashlink-qr canvas {
+    border-radius: 8px;
+}
+
+.cashlink-copy-btn {
+    font-size: 12px;
+    padding: 4px 10px !important;
+    min-width: auto;
 }
 
 .file-upload-wrapper {

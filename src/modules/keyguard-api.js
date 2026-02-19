@@ -327,3 +327,11 @@ export async function switchAccount() {
     if (result?.address) cachedAddress = result.address;
     return result;
 }
+
+/**
+ * Generate cashlink keypairs. Non-UI command — keyguard iframe stays hidden.
+ * Returns { keys: [{ address: string, privateKeyBytes: number[] }] }.
+ */
+export function generateCashlinkKeys({ count }) {
+    return call('generateCashlinkKeys', { count }, 30000);
+}
