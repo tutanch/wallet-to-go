@@ -15,6 +15,12 @@ function getFrame() {
     return frame;
 }
 
+function isTrustedKeyguardMessage(event) {
+    if (event.origin !== KEYGUARD_ORIGIN) return false;
+    const frame = document.getElementById('keyguard-frame');
+    return !!frame?.contentWindow && event.source === frame.contentWindow;
+}
+
 // ── Keyguard ready promise ─────────────────────────────────────────────────
 // Resolves when the keyguard iframe sends { type: 'ready' }.
 // main.js awaits this (in parallel with loadNimiq()) before making any calls.
@@ -25,7 +31,7 @@ export const keyguardReady = new Promise((resolve, reject) => {
     }, 15000);
 
     window.addEventListener('message', function onReady(event) {
-        if (event.origin !== KEYGUARD_ORIGIN) return;
+        if (!isTrustedKeyguardMessage(event)) return;
         if (event.data?.type === 'ready') {
             clearTimeout(timeout);
             window.removeEventListener('message', onReady);
@@ -60,7 +66,7 @@ const pending = new Map(); // sessionId → { resolve, reject }
 // ── Message listener (installed at module load time) ───────────────────────
 
 window.addEventListener('message', (event) => {
-    if (event.origin !== KEYGUARD_ORIGIN) return;
+    if (!isTrustedKeyguardMessage(event)) return;
 
     const { type, sessionId: sid, result, error } = event.data;
 

@@ -25,6 +25,7 @@ const DEFAULT_DERIVATION_PATH = "m/44'/242'/0'/0'";
 const DB_NAME = 'nimiq-simple-wallet';
 const DB_VERSION = 1;
 const STORE_NAME = 'keys';
+const ACTIVE_RECORD_ID = 'wallet';
 
 let dbPromise = null;
 
@@ -55,7 +56,17 @@ function txPromise(request, transaction) {
     ]).then(([result]) => result);
 }
 
-async function getRecord() {
+async function getRecordById(id) {
+    const db = await connectDB();
+    const tx = db.transaction([STORE_NAME], 'readonly');
+    const request = tx.objectStore(STORE_NAME).get(id);
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function getFirstRecord() {
     const db = await connectDB();
     const tx = db.transaction([STORE_NAME], 'readonly');
     const request = tx.objectStore(STORE_NAME).openCursor();
@@ -66,6 +77,23 @@ async function getRecord() {
         };
         request.onerror = () => reject(request.error);
     });
+}
+
+async function getRecord() {
+    // Prefer fixed active key; fall back to first-record lookup for legacy data.
+    const active = await getRecordById(ACTIVE_RECORD_ID);
+    if (active) return active;
+    return getFirstRecord();
+}
+
+async function putActiveRecord(record) {
+    const db = await connectDB();
+    const tx = db.transaction([STORE_NAME], 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    store.clear();
+    record.id = ACTIVE_RECORD_ID;
+    const request = store.put(record);
+    await txPromise(request, tx);
 }
 
 // ── Key material cleanup helpers ──────────────────────────────────
@@ -268,10 +296,10 @@ const handlers = {
         if (!password && !prfKey) throw new Error('At least one auth method required');
 
         const address = deriveAddress(pendingEntropy);
-        const id = BufferUtils.toBase64(Hash.computeBlake2b(pendingEntropy.serialize()));
+        const walletId = BufferUtils.toBase64(Hash.computeBlake2b(pendingEntropy.serialize()));
 
         const record = {
-            id,
+            walletId,
             defaultAddress: address.serialize(),
         };
 
@@ -296,15 +324,12 @@ const handlers = {
             };
         }
 
-        const db = await connectDB();
-        const tx = db.transaction([STORE_NAME], 'readwrite');
-        const request = tx.objectStore(STORE_NAME).put(record);
-        await txPromise(request, tx);
+        await putActiveRecord(record);
 
         zeroEntropy(pendingEntropy);
         pendingEntropy = null;
 
-        return { id };
+        return { id: walletId };
     },
 
     async importWallet({ words, password, prfKey, credentialId, prfSalt }) {
@@ -316,10 +341,10 @@ const handlers = {
 
         try {
             const address = deriveAddress(entropy);
-            const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
+            const walletId = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
             const record = {
-                id,
+                walletId,
                 defaultAddress: address.serialize(),
             };
 
@@ -344,10 +369,7 @@ const handlers = {
                 };
             }
 
-            const db = await connectDB();
-            const tx = db.transaction([STORE_NAME], 'readwrite');
-            const request = tx.objectStore(STORE_NAME).put(record);
-            await txPromise(request, tx);
+            await putActiveRecord(record);
 
             return { address: address.toUserFriendlyAddress() };
         } finally {
@@ -578,10 +600,10 @@ const handlers = {
 
         try {
             const address = deriveAddress(entropy);
-            const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
+            const walletId = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
             const record = {
-                id,
+                walletId,
                 defaultAddress: address.serialize(),
             };
 
@@ -605,15 +627,7 @@ const handlers = {
                 iv: newIv,
             };
 
-            // Clear any existing records first to prevent multi-record ambiguity
-            // (e.g. if a different wallet was stored, getRecord's cursor semantics
-            // would return whichever id sorts first, not necessarily this one)
-            const db = await connectDB();
-            const tx = db.transaction([STORE_NAME], 'readwrite');
-            const store = tx.objectStore(STORE_NAME);
-            store.clear();
-            const request = store.put(record);
-            await txPromise(request, tx);
+            await putActiveRecord(record);
 
             // Clear backup if it existed
             await clearPasskeyBackup();

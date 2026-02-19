@@ -53,6 +53,11 @@ OWNER="$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/]([^/]+)/.*|\1|')"
 REPO="$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/][^/]+/([^/.]+).*|\1|')"
 
 WALLET_ORIGIN="https://${OWNER}.github.io"
+if [[ "$REPO" == "${OWNER}.github.io" ]]; then
+    WALLET_APP_URL="${WALLET_ORIGIN}/"
+else
+    WALLET_APP_URL="${WALLET_ORIGIN}/${REPO}/"
+fi
 KEYGUARD_ORIGIN="https://${ORG}.github.io"
 KEYGUARD_REPO="${ORG}.github.io"
 
@@ -60,7 +65,7 @@ echo ""
 echo "╔══════════════════════════════════════╗"
 echo "║       Nimiq Cross-Origin Deploy      ║"
 echo "╠══════════════════════════════════════╣"
-echo "║  Wallet:   ${WALLET_ORIGIN}/${REPO}"
+echo "║  Wallet:   ${WALLET_APP_URL}"
 echo "║  Keyguard: ${KEYGUARD_ORIGIN}"
 echo "╚══════════════════════════════════════╝"
 echo ""
@@ -95,6 +100,7 @@ cp -R "$ROOT/keyguard/"* "$WORK/kg/"
 # Replace [WALLET_ORIGIN] placeholder in all keyguard source files
 sed -i.bak "s|\[WALLET_ORIGIN\]|${WALLET_ORIGIN}|g" "$WORK/kg/index.html"
 sed -i.bak "s|\[WALLET_ORIGIN\]|${WALLET_ORIGIN}|g" "$WORK/kg/src/keyguard-app.js"
+sed -i.bak "s|\[WALLET_APP_URL\]|${WALLET_APP_URL}|g" "$WORK/kg/src/keyguard-app.js"
 rm -f "$WORK/kg/index.html.bak" "$WORK/kg/src/keyguard-app.js.bak"
 
 # .nojekyll so GitHub Pages serves everything as-is

@@ -184,18 +184,29 @@ function getFrame() {
     return document.getElementById('keyguard-frame');
 }
 
-function respondToKeyguard(result, error) {
+function isTrustedKeyguardMessage(event) {
+    if (event.origin !== KEYGUARD_ORIGIN) return false;
+    const frame = getFrame();
+    return !!frame?.contentWindow && event.source === frame.contentWindow;
+}
+
+function respondToKeyguard(result, error, requestId) {
     const frame = getFrame();
     if (!frame || !frame.contentWindow) return;
     try {
         if (error) {
             frame.contentWindow.postMessage(
-                { type: 'webauthn-response', error: error.message || String(error), errorName: error.name },
+                {
+                    type: 'webauthn-response',
+                    requestId,
+                    error: error.message || String(error),
+                    errorName: error.name,
+                },
                 KEYGUARD_ORIGIN,
             );
         } else {
             frame.contentWindow.postMessage(
-                { type: 'webauthn-response', result },
+                { type: 'webauthn-response', requestId, result },
                 KEYGUARD_ORIGIN,
             );
         }
@@ -203,10 +214,10 @@ function respondToKeyguard(result, error) {
 }
 
 window.addEventListener('message', async (event) => {
-    if (event.origin !== KEYGUARD_ORIGIN) return;
+    if (!isTrustedKeyguardMessage(event)) return;
     if (event.data?.type !== 'webauthn-request') return;
 
-    const { action } = event.data;
+    const { action, requestId } = event.data;
 
     try {
         let result;
@@ -255,8 +266,8 @@ window.addEventListener('message', async (event) => {
             default:
                 throw new Error(`Unknown WebAuthn action: ${action}`);
         }
-        respondToKeyguard(result, null);
+        respondToKeyguard(result, null, requestId);
     } catch (err) {
-        respondToKeyguard(null, err);
+        respondToKeyguard(null, err, requestId);
     }
 });

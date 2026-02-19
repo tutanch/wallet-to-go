@@ -4,8 +4,47 @@
 //
 // Replace [WALLET_ORIGIN] with the actual wallet origin before deploying,
 // e.g. https://tutanch.github.io
+// Replace [WALLET_APP_URL] with the full wallet app URL prefix, e.g.
+// https://tutanch.github.io/nimiq-wallet/
 
 const WALLET_ORIGIN = '[WALLET_ORIGIN]';
+const WALLET_APP_URL = '[WALLET_APP_URL]';
+
+const ORIGINS_CONFIGURED = !WALLET_ORIGIN.includes('[') && !WALLET_APP_URL.includes('[');
+
+function normalizeUrlPrefix(url) {
+    return url.endsWith('/') ? url : `${url}/`;
+}
+
+function isAllowedWalletReferrer() {
+    if (!ORIGINS_CONFIGURED) return true; // local/dev mode with placeholders
+    if (window.parent === window) return true; // direct open for debugging
+    if (!document.referrer) return false;
+    try {
+        const ref = new URL(document.referrer);
+        if (ref.origin !== WALLET_ORIGIN) return false;
+        const expected = new URL(normalizeUrlPrefix(WALLET_APP_URL));
+        const expectedPrefix = normalizeUrlPrefix(`${expected.origin}${expected.pathname}`);
+        const refUrl = new URL(normalizeUrlPrefix(`${ref.origin}${ref.pathname}`));
+        const actualPrefix = `${refUrl.origin}${refUrl.pathname}`;
+        return actualPrefix.startsWith(expectedPrefix);
+    } catch (_) {
+        return false;
+    }
+}
+
+const EMBED_ALLOWED = isAllowedWalletReferrer();
+if (!EMBED_ALLOWED) {
+    // Fail closed if the iframe was embedded from an unexpected wallet context.
+    document.documentElement.style.display = 'none';
+}
+
+function isTrustedWalletEvent(event) {
+    if (!EMBED_ALLOWED) return false;
+    if (event.origin !== WALLET_ORIGIN) return false;
+    if (window.parent !== window && event.source !== window.parent) return false;
+    return true;
+}
 
 // ── Worker bridge ─────────────────────────────────────────────────────────
 
@@ -263,8 +302,17 @@ function renderDeleteConfirm({ showPassword = true } = {}) {
 // The sandboxed iframe cannot call navigator.credentials directly.
 // Instead, we send requests to the wallet origin and await its response.
 
+let webauthnReqId = 0;
+
 function requestWebAuthnFromWallet(action, params = {}) {
     return new Promise((resolve, reject) => {
+        if (!currentSession || !currentSession.source) {
+            reject(new Error('No active wallet session'));
+            return;
+        }
+        const expectedSource = currentSession.source;
+        const requestId = `${Date.now()}-${++webauthnReqId}-${Math.random().toString(36).slice(2)}`;
+
         // Timeout prevents the flow from hanging if the wallet never responds.
         // 120s allows for slow cross-device passkey ceremonies (Bluetooth/QR).
         const timer = setTimeout(() => {
@@ -273,8 +321,10 @@ function requestWebAuthnFromWallet(action, params = {}) {
         }, 120000);
 
         function onMessage(event) {
-            if (event.origin !== WALLET_ORIGIN) return;
+            if (!isTrustedWalletEvent(event)) return;
+            if (event.source !== expectedSource) return;
             if (event.data?.type !== 'webauthn-response') return;
+            if (event.data?.requestId !== requestId) return;
             clearTimeout(timer);
             window.removeEventListener('message', onMessage);
             if (event.data.error) {
@@ -286,7 +336,7 @@ function requestWebAuthnFromWallet(action, params = {}) {
             }
         }
         window.addEventListener('message', onMessage);
-        sendToWallet({ type: 'webauthn-request', action, ...params });
+        sendToWallet({ type: 'webauthn-request', requestId, action, ...params });
     });
 }
 
@@ -1290,7 +1340,7 @@ async function flowRemoveWebAuthn() {
 
 window.addEventListener('message', async (event) => {
     // Strict origin validation — reject anything not from the wallet
-    if (event.origin !== WALLET_ORIGIN) return;
+    if (!isTrustedWalletEvent(event)) return;
 
     // Ping/pong: wallet sends this to recover if it missed the initial 'ready'
     if (event.data?.type === 'ping') {
@@ -1302,9 +1352,11 @@ window.addEventListener('message', async (event) => {
     if (event.data?.type === 'webauthn-response') return;
 
     const { sessionId, command, args } = event.data;
+    if (typeof command !== 'string') return;
+    if (!Number.isInteger(sessionId)) return;
 
     // Transparent passthroughs: no UI, immediate response via worker
-    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'hasPasskeyBackup', 'getWebAuthnInfo', 'hasPassword'];
+    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword'];
     if (PASSTHROUGH_COMMANDS.includes(command)) {
         try {
             const result = await callWorker(command);
@@ -1343,7 +1395,9 @@ window.addEventListener('message', async (event) => {
 // ── Signal readiness ──────────────────────────────────────────────────────
 // Sent after the module has loaded so the wallet knows the keyguard is ready.
 try {
-    window.parent.postMessage({ type: 'ready' }, WALLET_ORIGIN);
+    if (EMBED_ALLOWED) {
+        window.parent.postMessage({ type: 'ready' }, WALLET_ORIGIN);
+    }
 } catch (_) {
     // Not embedded — expected when accessing keyguard directly
 }
