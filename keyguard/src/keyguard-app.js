@@ -564,19 +564,6 @@ function setUI(html) {
     ui.innerHTML = html;
 }
 
-// Build a structured 32-byte nonce from a sequential account index.
-// Format: "NIM\x01" (4 bytes magic) + uint32 BE index + 24 bytes zero.
-function buildIndexNonce(index) {
-    const nonce = new Uint8Array(32);
-    nonce[0] = 0x4E; // 'N'
-    nonce[1] = 0x49; // 'I'
-    nonce[2] = 0x4D; // 'M'
-    nonce[3] = 0x01; // version 1
-    const view = new DataView(nonce.buffer);
-    view.setUint32(4, index, false); // big-endian
-    return nonce;
-}
-
 // Track the next account index for multi-account passkey wallets.
 function getNextAccountIndex() {
     return parseInt(localStorage.getItem('nimiq-account-idx') || '0', 10);
@@ -610,7 +597,12 @@ async function flowCreateWallet() {
 
             try {
                 const accountIndex = getNextAccountIndex();
-                const userId = buildIndexNonce(accountIndex);
+                // user.id MUST be random — it controls credential deduplication
+                // on the platform. If deterministic, a new browser session would
+                // overwrite the old passkey (same RP + same user.id = replace).
+                // The account index for wallet derivation is passed separately
+                // to createWalletFromPrf.
+                const userId = crypto.getRandomValues(new Uint8Array(32));
                 const { credentialId, prfKey } = await createWebAuthnCredential(
                     userId, nextPasskeyName(), RESTORE_PRF_SALT,
                 );
