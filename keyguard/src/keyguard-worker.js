@@ -625,7 +625,7 @@ const handlers = {
         };
     },
 
-    async restoreWithPasskey({ prfKey, password, credentialId, prfSalt, fromBackup }) {
+    async restoreWithPasskey({ prfKey, password, credentialId, prfSalt, fromBackup, allowOverwrite }) {
         await ensureWasm();
 
         let entropy;
@@ -665,10 +665,12 @@ const handlers = {
             const address = deriveAddress(entropy);
 
             // Safety check: if a wallet already exists with a DIFFERENT address,
-            // refuse to overwrite it. Prevents the lock screen from silently
-            // replacing the user's wallet when they pick the wrong passkey.
+            // refuse to overwrite it (unless the caller explicitly allows it,
+            // e.g. when restoring from the welcome screen after "Use a different wallet").
+            // Prevents the lock screen from silently replacing the user's wallet
+            // when they pick the wrong passkey.
             const existing = await getRecord();
-            if (existing) {
+            if (existing && !allowOverwrite) {
                 const existingAddr = Address.fromAny(existing.defaultAddress).toUserFriendlyAddress();
                 const newAddr = address.toUserFriendlyAddress();
                 if (existingAddr !== newAddr) {

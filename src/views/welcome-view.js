@@ -30,7 +30,7 @@ export function welcomeView() {
         errorEl.style.display = 'none';
 
         try {
-            await restoreWithPasskey();
+            await restoreWithPasskey({ allowOverwrite: true });
             navigate('#dashboard');
         } catch (e) {
             btn.disabled = false;

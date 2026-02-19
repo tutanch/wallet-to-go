@@ -273,7 +273,7 @@ function renderTxConfirm({ amount, recipient, message, fee }) {
         </div>`;
 }
 
-function renderBatchTxConfirm({ recipientCount, amountEach, feeEach, totalFees, totalCost }) {
+function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees, totalCost }) {
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
@@ -287,8 +287,8 @@ function renderBatchTxConfirm({ recipientCount, amountEach, feeEach, totalFees, 
                         <span class="tx-value">${escHtml(String(recipientCount))} addresses</span>
                     </div>
                     <div class="tx-confirm-row">
-                        <span class="tx-label">Amount Each</span>
-                        <span class="tx-value">${escHtml(amountEach)}</span>
+                        <span class="tx-label">Total Amount</span>
+                        <span class="tx-value">${escHtml(totalAmount)}</span>
                     </div>
                     <div class="tx-confirm-row">
                         <span class="tx-label">Fee Each</span>
@@ -889,16 +889,17 @@ async function flowSignBatchTransaction(args) {
 
     const count = args.transactions.length;
     const firstTx = args.transactions[0];
-    const amountEach = formatLuna(firstTx.value);
     const feeEach = formatLuna(firstTx.fee);
-    const totalAmount = Number(firstTx.value) * count;
+    let sumAmount = 0;
+    for (const tx of args.transactions) sumAmount += Number(tx.value);
     const totalFee = Number(firstTx.fee) * count;
-    const totalCost = formatLuna(totalAmount + totalFee);
+    const totalCost = formatLuna(sumAmount + totalFee);
+    const totalAmount = formatLuna(sumAmount);
     const totalFees = formatLuna(totalFee);
 
     setUI(renderBatchTxConfirm({
         recipientCount: count,
-        amountEach,
+        totalAmount,
         feeEach,
         totalFees,
         totalCost,
@@ -911,7 +912,7 @@ async function flowSignBatchTransaction(args) {
         const info = await callWorker('getWebAuthnInfo');
         const passwordSet = await callWorker('hasPassword');
 
-        const subtitle = `Batch: ${count} transactions, ${amountEach} each`;
+        const subtitle = `Batch: ${count} transactions, ${totalAmount} total`;
 
         if (info.hasWebAuthn && passwordSet) {
             setUI(renderUnlockChoice('Authenticate to Sign', subtitle));
@@ -1345,7 +1346,7 @@ const RESTORE_PRF_SALT = new Uint8Array([
     45,118,49,0,0,0,0,0,0,0,0,0,0,0,0,0,
 ]); // "nimiq-wallet-prf-v1" padded to 32 bytes
 
-async function flowRestoreWithPasskey() {
+async function flowRestoreWithPasskey(args) {
     showUI();
 
     // Check for same-device backup first
@@ -1433,6 +1434,7 @@ async function flowRestoreWithPasskey() {
                 credentialId: Array.from(new Uint8Array(credentialId)),
                 prfSalt: Array.from(new Uint8Array(prfSalt)),
                 fromBackup,
+                allowOverwrite: !!args.allowOverwrite,
             });
             if (prfKey.fill) prfKey.fill(0);
             resolveSession({ address: result.address });
@@ -1578,7 +1580,7 @@ window.addEventListener('message', async (event) => {
         case 'exportMnemonic':   flowExportMnemonic(); break;
         case 'deleteWallet':     flowDeleteWallet(); break;
         case 'unlock':           flowUnlock(); break;
-        case 'restoreWithPasskey': flowRestoreWithPasskey(); break;
+        case 'restoreWithPasskey': flowRestoreWithPasskey(args || {}); break;
         case 'registerWebAuthn': flowRegisterWebAuthn(); break;
         case 'removeWebAuthn':   flowRemoveWebAuthn(); break;
         default:

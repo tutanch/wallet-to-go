@@ -1,7 +1,7 @@
 import { navigate } from '../router.js';
 import { getStoredAddress, signBatchTransaction } from '../modules/keyguard-api.js';
 import * as network from '../modules/network-client.js';
-import { nimToLuna, formatNim, getNetworkConfig } from '../config.js';
+import { nimToLuna, lunaToNim, formatNim, getNetworkConfig } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
 
 export async function batchSendView() {
@@ -25,16 +25,16 @@ export async function batchSendView() {
             </div>
             <div class="nq-card-body">
                 <div class="form-group">
-                    <label class="nq-label">Recipient Addresses</label>
+                    <label class="nq-label">Recipients</label>
                     <textarea class="nq-input" id="recipients" rows="6"
-                        placeholder="One address per line&#10;NQ52 2CNA U8HC N61T HA9G 1X44 79Q0 VBCE LK14&#10;NQ07 ..."></textarea>
+                        placeholder="One per line — address only or address, amount&#10;NQ52 2CNA U8HC N61T HA9G 1X44 79Q0 VBCE LK14&#10;NQ07 ..., 10.5"></textarea>
                     <div class="file-upload-wrapper">
                         <label class="file-upload-label" for="file-upload">Upload CSV / TXT</label>
                         <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Amount per recipient (NIM)</label>
+                    <label class="nq-label">Default amount (NIM) — used when no per-line amount</label>
                     <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.00001" min="0">
                 </div>
                 <div class="form-group">
@@ -71,23 +71,54 @@ export async function batchSendView() {
         const errorEl = el.querySelector('#error');
         errorEl.style.display = 'none';
 
-        // Parse addresses
         const rawText = el.querySelector('#recipients').value;
         const lines = rawText.split('\n');
-        const parsed = [];
+        const parsed = [];   // { address, amountLuna }
         const errors = [];
+
+        // Default amount from the global field
+        const defaultAmountRaw = el.querySelector('#amount').value.trim();
+        const defaultLuna = nimToLuna(defaultAmountRaw);
 
         const Nimiq = await loadNimiq();
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line || line.startsWith('#') || line.toLowerCase().startsWith('address')) continue;
+
+            // Split on comma or tab from the right to extract optional amount
+            let addrPart = line;
+            let lineLuna = null;
+
+            const sepIdx = Math.max(line.lastIndexOf(','), line.lastIndexOf('\t'));
+            if (sepIdx > 0) {
+                const candidate = line.substring(sepIdx + 1).trim();
+                if (/^-?(\d+\.?\d*|\d*\.\d+)$/.test(candidate)) {
+                    addrPart = line.substring(0, sepIdx).trim();
+                    lineLuna = nimToLuna(candidate);
+                    if (isNaN(lineLuna) || lineLuna <= 0) {
+                        errors.push(`Line ${i + 1}: invalid amount "${candidate}"`);
+                        continue;
+                    }
+                }
+            }
+
+            // Use per-line amount or fall back to default
+            const amountLuna = lineLuna !== null ? lineLuna : defaultLuna;
+
             try {
-                Nimiq.Address.fromString(line);
-                parsed.push(line);
+                Nimiq.Address.fromString(addrPart);
             } catch {
                 errors.push(`Line ${i + 1}: invalid address`);
+                continue;
             }
+
+            if (isNaN(amountLuna) || amountLuna <= 0) {
+                errors.push(`Line ${i + 1}: no amount (set a default or add amount after comma)`);
+                continue;
+            }
+
+            parsed.push({ address: addrPart, amountLuna });
         }
 
         if (errors.length > 0) {
@@ -98,16 +129,7 @@ export async function batchSendView() {
         }
 
         if (parsed.length === 0) {
-            errorEl.textContent = 'No valid recipient addresses found.';
-            errorEl.style.display = '';
-            return;
-        }
-
-        // Validate amount
-        const amountRaw = el.querySelector('#amount').value.trim();
-        const valueLuna = nimToLuna(amountRaw);
-        if (isNaN(valueLuna) || valueLuna <= 0) {
-            errorEl.textContent = 'Please enter a valid amount.';
+            errorEl.textContent = 'No valid recipients found.';
             errorEl.style.display = '';
             return;
         }
@@ -123,12 +145,24 @@ export async function batchSendView() {
 
         const feeValue = Math.max(0, parseInt(el.querySelector('#fee').value) || 0);
 
-        showPreview(parsed, valueLuna, feeValue, messageValue, amountRaw);
+        showPreview(parsed, feeValue, messageValue);
     });
 
     // ── Step 2: Preview ─────────────────────────────────────────────
-    function showPreview(recipients, valueLuna, feeValue, messageValue, amountDisplay) {
-        const totalCostLuna = (valueLuna + feeValue) * recipients.length;
+    function showPreview(recipients, feeValue, messageValue) {
+        // recipients = [{ address, amountLuna }]
+
+        function calcTotalCost() {
+            let sum = 0;
+            for (const r of recipients) sum += r.amountLuna + feeValue;
+            return sum;
+        }
+
+        function calcTotalAmount() {
+            let sum = 0;
+            for (const r of recipients) sum += r.amountLuna;
+            return sum;
+        }
 
         el.innerHTML = `
             <div class="nq-card">
@@ -142,8 +176,8 @@ export async function batchSendView() {
                             <div class="lbl">Recipients</div>
                         </div>
                         <div class="batch-summary-item">
-                            <div class="num" id="s-each"></div>
-                            <div class="lbl">NIM Each</div>
+                            <div class="num" id="s-amount"></div>
+                            <div class="lbl">Total NIM</div>
                         </div>
                         <div class="batch-summary-item">
                             <div class="num" id="s-total"></div>
@@ -157,7 +191,7 @@ export async function batchSendView() {
                     <p class="nq-text error-text" id="balance-warning" style="display:none;"></p>
                     <div class="batch-table-container">
                         <table class="batch-table">
-                            <thead><tr><th>#</th><th>Recipient</th><th>Status</th></tr></thead>
+                            <thead><tr><th>#</th><th>Recipient</th><th>Amount (NIM)</th><th>Status</th></tr></thead>
                             <tbody id="batch-tbody"></tbody>
                         </table>
                     </div>
@@ -173,60 +207,113 @@ export async function batchSendView() {
             </div>
         `;
 
-        // Populate summary via textContent (XSS-safe)
-        el.querySelector('#s-count').textContent = recipients.length;
-        el.querySelector('#s-each').textContent = amountDisplay;
-        el.querySelector('#s-total').textContent = formatNim(totalCostLuna);
+        const $count = el.querySelector('#s-count');
+        const $amount = el.querySelector('#s-amount');
+        const $total = el.querySelector('#s-total');
+        const $balance = el.querySelector('#s-balance');
+        const $warning = el.querySelector('#balance-warning');
+        const btnSign = el.querySelector('#btn-sign');
+
+        let fetchedBalance = null;
+
+        function updateSummary() {
+            $count.textContent = recipients.length;
+            $amount.textContent = formatNim(calcTotalAmount());
+            $total.textContent = formatNim(calcTotalCost());
+
+            // Re-check balance
+            if (fetchedBalance !== null) {
+                $warning.style.display = fetchedBalance < calcTotalCost() ? '' : 'none';
+                if (fetchedBalance < calcTotalCost()) {
+                    $warning.textContent = 'Insufficient balance for this batch.';
+                    btnSign.disabled = true;
+                } else {
+                    btnSign.disabled = false;
+                }
+            }
+        }
+
+        updateSummary();
 
         // Build table rows via DOM (XSS-safe)
         const tbody = el.querySelector('#batch-tbody');
-        recipients.forEach((addr, i) => {
+        recipients.forEach((r, i) => {
             const tr = document.createElement('tr');
+
             const tdNum = document.createElement('td');
             tdNum.textContent = i + 1;
+
             const tdAddr = document.createElement('td');
-            tdAddr.textContent = truncateAddress(addr);
-            tdAddr.title = addr;
+            tdAddr.textContent = truncateAddress(r.address);
+            tdAddr.title = r.address;
+
+            const tdAmount = document.createElement('td');
+            const amountInput = document.createElement('input');
+            amountInput.type = 'number';
+            amountInput.className = 'batch-amount-input';
+            amountInput.value = lunaToNim(r.amountLuna);
+            amountInput.step = '0.00001';
+            amountInput.min = '0';
+            amountInput.addEventListener('input', () => {
+                const newLuna = nimToLuna(amountInput.value);
+                if (!isNaN(newLuna) && newLuna > 0) {
+                    r.amountLuna = newLuna;
+                    amountInput.classList.remove('batch-amount-invalid');
+                } else {
+                    amountInput.classList.add('batch-amount-invalid');
+                }
+                updateSummary();
+            });
+            tdAmount.appendChild(amountInput);
+
             const tdStatus = document.createElement('td');
             const badge = document.createElement('span');
             badge.className = 'batch-badge batch-badge-pending';
             badge.textContent = 'Pending';
             tdStatus.appendChild(badge);
+
             tr.appendChild(tdNum);
             tr.appendChild(tdAddr);
+            tr.appendChild(tdAmount);
             tr.appendChild(tdStatus);
             tbody.appendChild(tr);
         });
 
         // Fetch balance
-        const btnSign = el.querySelector('#btn-sign');
         network.getBalance(address).then(balance => {
-            el.querySelector('#s-balance').textContent = formatNim(balance);
-            if (balance < totalCostLuna) {
-                const warn = el.querySelector('#balance-warning');
-                warn.textContent = 'Insufficient balance for this batch.';
-                warn.style.display = '';
-                btnSign.disabled = true;
-            }
+            fetchedBalance = balance;
+            $balance.textContent = formatNim(balance);
+            updateSummary();
         }).catch(() => {
-            el.querySelector('#s-balance').textContent = '?';
+            $balance.textContent = '?';
         });
 
         el.querySelector('#btn-edit').addEventListener('click', () => navigate('#batch-send'));
 
         btnSign.addEventListener('click', () => {
-            startSigning(recipients, valueLuna, feeValue, messageValue);
+            // Validate all amounts before signing
+            const invalid = recipients.some(r => isNaN(r.amountLuna) || r.amountLuna <= 0);
+            if (invalid) {
+                const errorEl = el.querySelector('#error');
+                errorEl.textContent = 'Fix invalid amounts (highlighted in red) before signing.';
+                errorEl.style.display = '';
+                return;
+            }
+            startSigning(recipients, feeValue, messageValue);
         });
     }
 
     // ── Step 3 & 4: Sign and broadcast ──────────────────────────────
-    async function startSigning(recipients, valueLuna, feeValue, messageValue) {
+    async function startSigning(recipients, feeValue, messageValue) {
         const btnSign = el.querySelector('#btn-sign');
         const errorEl = el.querySelector('#error');
         errorEl.style.display = 'none';
 
         btnSign.disabled = true;
         btnSign.textContent = 'Opening keyguard...';
+
+        // Disable amount inputs during signing
+        el.querySelectorAll('.batch-amount-input').forEach(inp => { inp.disabled = true; });
 
         try {
             const validityStartHeight = await network.getHeadHeight();
@@ -237,9 +324,9 @@ export async function batchSendView() {
                 throw new Error('Network ID mismatch');
             }
 
-            const transactions = recipients.map(recipientAddress => ({
-                recipientAddress,
-                value: valueLuna,
+            const transactions = recipients.map(r => ({
+                recipientAddress: r.address,
+                value: r.amountLuna,
                 fee: feeValue,
                 message: messageValue,
                 validityStartHeight,
@@ -312,6 +399,7 @@ export async function batchSendView() {
         } catch (e) {
             btnSign.disabled = false;
             btnSign.textContent = 'Sign & Send';
+            el.querySelectorAll('.batch-amount-input').forEach(inp => { inp.disabled = false; });
 
             if (e.message === 'User cancelled') return;
 

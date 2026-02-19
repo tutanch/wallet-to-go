@@ -855,6 +855,40 @@ body {
     color: #D94432;
 }
 
+.batch-amount-input {
+    width: 80px;
+    padding: 4px 6px;
+    border: 1px solid rgba(31, 35, 72, 0.12);
+    border-radius: 4px;
+    background: transparent;
+    font-family: 'Fira Mono', monospace;
+    font-size: 12px;
+    color: #1F2348;
+    text-align: right;
+    outline: none;
+    -moz-appearance: textfield;
+}
+
+.batch-amount-input::-webkit-inner-spin-button,
+.batch-amount-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.batch-amount-input:focus {
+    border-color: #0582CA;
+}
+
+.batch-amount-input:disabled {
+    opacity: 0.5;
+    background: rgba(31, 35, 72, 0.04);
+}
+
+.batch-amount-invalid {
+    border-color: #D94432;
+    color: #D94432;
+}
+
 .action-buttons-secondary {
     display: flex;
     justify-content: center;

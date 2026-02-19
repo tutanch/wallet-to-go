@@ -234,8 +234,8 @@ export function unlock() {
  * Works cross-device via iCloud-synced passkeys.
  * Returns { address }.
  */
-export async function restoreWithPasskey() {
-    const result = await call('restoreWithPasskey');
+export async function restoreWithPasskey(opts) {
+    const result = await call('restoreWithPasskey', opts || null);
     if (result?.address) cachedAddress = result.address;
     return result;
 }
