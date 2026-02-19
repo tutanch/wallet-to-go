@@ -98,15 +98,18 @@ async function getPrfKey({ credentialId, prfSalt }) {
     return Array.from(new Uint8Array(prfResult));
 }
 
-async function getDiscoverablePrfKey(prfSalt) {
+async function getDiscoverablePrfKey(prfSalt, secondPrfSalt) {
     const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+    const prfEval = { first: new Uint8Array(prfSalt) };
+    if (secondPrfSalt) prfEval.second = new Uint8Array(secondPrfSalt);
 
     const assertion = await navigator.credentials.get({
         publicKey: {
             challenge,
             userVerification: 'required',
             extensions: {
-                prf: { eval: { first: new Uint8Array(prfSalt) } },
+                prf: { eval: prfEval },
             },
         },
     });
@@ -114,10 +117,13 @@ async function getDiscoverablePrfKey(prfSalt) {
     const extResults = assertion.getClientExtensionResults();
     const prfResult = extResults.prf?.results?.first;
     if (!prfResult) throw new Error('PRF output not available');
-    return {
+    const result = {
         prfKey: Array.from(new Uint8Array(prfResult)),
         credentialId: Array.from(new Uint8Array(assertion.rawId)),
     };
+    const prfSecond = extResults.prf?.results?.second;
+    if (prfSecond) result.prfKeySecond = Array.from(new Uint8Array(prfSecond));
+    return result;
 }
 
 // ── User gesture prompt ───────────────────────────────────────────────────
@@ -251,13 +257,14 @@ window.addEventListener('message', async (event) => {
                 break;
             }
             case 'getForRestore': {
-                // Discoverable credential with PRF — for cross-device passkey login.
+                // Discoverable credential with PRF — for passkey login.
                 // No allowCredentials so the browser shows the passkey picker.
+                // Optional secondPrfSalt for backup decryption (dual-salt ceremony).
                 const frame = getFrame();
                 if (frame) frame.style.display = 'none';
                 try {
                     await showGesturePrompt(false);
-                    result = await getDiscoverablePrfKey(event.data.prfSalt);
+                    result = await getDiscoverablePrfKey(event.data.prfSalt, event.data.secondPrfSalt);
                 } finally {
                     if (frame) frame.style.display = '';
                 }

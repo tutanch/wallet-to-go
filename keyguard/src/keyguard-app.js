@@ -1386,17 +1386,29 @@ async function flowRestoreWithPasskey() {
         let fromBackup = false;
 
         try {
+            // Always use discoverable flow so the browser shows the passkey picker.
+            // If a backup exists, pass its salt as a second PRF eval so we get
+            // both outputs in a single ceremony (no second WebAuthn prompt).
+            const params = { prfSalt: Array.from(RESTORE_PRF_SALT) };
             if (backup.hasBackup) {
-                // Same-device: use backup's credential ID and salt
-                prfKey = await getWebAuthnPrfKey(backup.credentialId, backup.prfSalt);
-                credentialId = backup.credentialId;
+                params.secondPrfSalt = Array.from(new Uint8Array(backup.prfSalt));
+            }
+            const result = await requestWebAuthnFromWallet('getForRestore', params);
+
+            // Check if the user selected the backed-up credential
+            const selectedId = JSON.stringify(result.credentialId);
+            const backupId = backup.hasBackup
+                ? JSON.stringify(Array.from(new Uint8Array(backup.credentialId)))
+                : null;
+
+            if (backup.hasBackup && selectedId === backupId && result.prfKeySecond) {
+                // Selected credential matches backup — decrypt original wallet
+                prfKey = result.prfKeySecond;
+                credentialId = result.credentialId;
                 prfSalt = backup.prfSalt;
                 fromBackup = true;
             } else {
-                // Cross-device: discoverable credential with fixed salt
-                const result = await requestWebAuthnFromWallet('getForRestore', {
-                    prfSalt: Array.from(RESTORE_PRF_SALT),
-                });
+                // Different credential or no backup — derive wallet from PRF
                 prfKey = result.prfKey;
                 credentialId = result.credentialId;
                 prfSalt = RESTORE_PRF_SALT;
