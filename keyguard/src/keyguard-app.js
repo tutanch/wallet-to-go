@@ -1788,6 +1788,95 @@ async function flowRemoveWebAuthn() {
     });
 }
 
+// ── Cashlink data encrypt/decrypt ─────────────────────────────────────────
+// Generic auth flow for encrypting or decrypting cashlink run data.
+// Shows passkey/password choice, then calls the specified worker command.
+
+async function flowCashlinkCrypto(args, workerCommand, title) {
+    showUI();
+
+    const info = await callWorker('getWebAuthnInfo');
+    const passwordSet = await callWorker('hasPassword');
+
+    if (info.hasWebAuthn && passwordSet) {
+        setUI(renderUnlockChoice(title, title));
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+        ui.querySelector('#btn-biometric').onclick = async () => {
+            const btn = ui.querySelector('#btn-biometric');
+            const errorEl = ui.querySelector('#error');
+            setButtonState(btn, 'Processing...', true);
+            try {
+                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                const result = await callWorker(workerCommand, {
+                    ...args, prfKey: Array.from(prfKey),
+                });
+                prfKey.fill(0);
+                resolveSession(result);
+            } catch (err) {
+                setButtonState(btn, 'Use Biometric / Passkey', false);
+                showError(errorEl, err.name === 'NotAllowedError'
+                    ? 'Authentication cancelled. Try again or use password.'
+                    : 'Failed. Try again or use password.');
+            }
+        };
+
+        ui.querySelector('#btn-password').onclick = () => {
+            setUI('');
+            showPasswordFormForCashlinkCrypto(args, workerCommand, title);
+        };
+    } else if (info.hasWebAuthn) {
+        setUI(renderUnlockChoice(title, title));
+        const pwBtn = ui.querySelector('#btn-password');
+        if (pwBtn) pwBtn.style.display = 'none';
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+
+        ui.querySelector('#btn-biometric').onclick = async () => {
+            const btn = ui.querySelector('#btn-biometric');
+            const errorEl = ui.querySelector('#error');
+            setButtonState(btn, 'Processing...', true);
+            try {
+                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                const result = await callWorker(workerCommand, {
+                    ...args, prfKey: Array.from(prfKey),
+                });
+                prfKey.fill(0);
+                resolveSession(result);
+            } catch (err) {
+                setButtonState(btn, 'Use Biometric / Passkey', false);
+                showError(errorEl, err.name === 'NotAllowedError'
+                    ? 'Authentication cancelled. Try again.'
+                    : 'Failed. Try again.');
+            }
+        };
+    } else {
+        showPasswordFormForCashlinkCrypto(args, workerCommand, title);
+    }
+}
+
+function showPasswordFormForCashlinkCrypto(args, workerCommand, title) {
+    setUI(renderPasswordForm({ title: 'Enter Password', subtitle: title, isNew: false }));
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Processing...', true);
+        try {
+            const result = await callWorker(workerCommand, { ...args, password: pw });
+            ui.querySelector('#password').value = '';
+            resolveSession(result);
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            showError(errorEl, err.message?.includes('Wrong password')
+                ? 'Wrong password.' : 'Failed. Please try again.');
+        }
+    });
+}
+
 // ── Main message handler ──────────────────────────────────────────────────
 
 window.addEventListener('message', async (event) => {
@@ -1855,6 +1944,8 @@ window.addEventListener('message', async (event) => {
         case 'registerWebAuthn': flowRegisterWebAuthn(); break;
         case 'removeWebAuthn':   flowRemoveWebAuthn(); break;
         case 'switchAccount':    flowSwitchAccount(); break;
+        case 'encryptCashlinkData': flowCashlinkCrypto(args || {}, 'encryptCashlinkData', 'Save Cashlinks'); break;
+        case 'decryptCashlinkData': flowCashlinkCrypto(args || {}, 'decryptCashlinkData', 'View Saved Cashlinks'); break;
         default:
             rejectSession(`Unknown command: ${command}`);
     }

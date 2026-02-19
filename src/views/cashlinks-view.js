@@ -4,9 +4,9 @@ import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { nimToLuna, formatNim, getNetworkConfig } from '../config.js';
 import { encodeCashlink, CASHLINK_FUNDING_DATA } from '../modules/cashlink-encoder.js';
-import { renderQr } from '../lib/qr-encoder.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+import { getSavedRunsMeta, saveCashlinkRun, loadCashlinkRun, deleteCashlinkRun } from '../modules/cashlink-storage.js';
 
 export async function cashlinksView() {
     const defaultAddress = await getStoredAddress();
@@ -108,6 +108,93 @@ export async function cashlinksView() {
             btn.disabled = false;
         }
     });
+
+    // ── Saved Runs Section ──────────────────────────────────────────
+
+    const cardBody = el.querySelector('.nq-card-body');
+    const savedSection = document.createElement('div');
+    savedSection.className = 'saved-runs-section';
+
+    const savedHeader = document.createElement('h2');
+    savedHeader.className = 'nq-label';
+    savedHeader.textContent = 'Saved Runs';
+    savedSection.appendChild(savedHeader);
+
+    const savedList = document.createElement('div');
+    savedList.className = 'saved-runs-list';
+    savedSection.appendChild(savedList);
+
+    cardBody.appendChild(savedSection);
+
+    function renderSavedRuns() {
+        const runs = getSavedRunsMeta();
+        savedList.innerHTML = '';
+
+        if (runs.length === 0) {
+            savedSection.style.display = 'none';
+            return;
+        }
+        savedSection.style.display = '';
+
+        for (const run of runs) {
+            const row = document.createElement('div');
+            row.className = 'saved-run-row';
+
+            const info = document.createElement('div');
+            info.className = 'saved-run-info';
+
+            const dateLine = document.createElement('div');
+            dateLine.className = 'saved-run-date';
+            dateLine.textContent = new Date(run.date).toLocaleDateString(undefined, {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: '2-digit', minute: '2-digit',
+            });
+
+            const details = document.createElement('div');
+            details.className = 'saved-run-details';
+            let detailText = `${run.count} cashlink${run.count !== 1 ? 's' : ''} \u00d7 ${run.amountNim} NIM`;
+            if (run.message) detailText += ` \u2014 "${run.message}"`;
+            details.textContent = detailText;
+
+            info.append(dateLine, details);
+
+            const actions = document.createElement('div');
+            actions.className = 'saved-run-actions';
+
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'nq-button-s';
+            viewBtn.textContent = 'View';
+            viewBtn.addEventListener('click', async () => {
+                viewBtn.disabled = true;
+                viewBtn.textContent = 'Loading...';
+                try {
+                    const data = await loadCashlinkRun(run.id);
+                    showSavedRunResults(data, run);
+                } catch (e) {
+                    if (e.message !== 'User cancelled') {
+                        showToast('Could not load run.', 'error');
+                    }
+                    viewBtn.disabled = false;
+                    viewBtn.textContent = 'View';
+                }
+            });
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'nq-button-s';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.addEventListener('click', () => {
+                deleteCashlinkRun(run.id);
+                renderSavedRuns();
+                showToast('Run deleted', 'info');
+            });
+
+            actions.append(viewBtn, deleteBtn);
+            row.append(info, actions);
+            savedList.appendChild(row);
+        }
+    }
+
+    renderSavedRuns();
 
     // ── Step 2: Preview ─────────────────────────────────────────────
 
@@ -318,6 +405,7 @@ export async function cashlinksView() {
                     <div class="cashlink-actions">
                         <button class="nq-button-s" id="btn-copy-all">Copy All URLs</button>
                         <button class="nq-button-s" id="btn-export-csv">Export CSV</button>
+                        <button class="nq-button-s" id="btn-save-run">Save Run</button>
                     </div>
                     <div class="cashlink-list" id="cashlink-list"></div>
                 </div>
@@ -331,51 +419,8 @@ export async function cashlinksView() {
         if (failed > 0) summaryParts.push(`${failed} failed`);
         el.querySelector('#result-summary').textContent = summaryParts.join(', ');
 
-        // Render each cashlink
-        const listEl = el.querySelector('#cashlink-list');
-        cashlinks.forEach((cl, i) => {
-            const item = document.createElement('div');
-            item.className = 'cashlink-item';
-
-            const header = document.createElement('div');
-            header.className = 'cashlink-item-header';
-
-            const label = document.createElement('span');
-            label.className = 'nq-label';
-            label.textContent = `#${i + 1}  \u2014  ${formatNim(amountLuna)} NIM`;
-
-            const copyBtn = document.createElement('button');
-            copyBtn.className = 'nq-button-s cashlink-copy-btn';
-            copyBtn.textContent = 'Copy';
-            copyBtn.addEventListener('click', async () => {
-                try {
-                    await navigator.clipboard.writeText(cl.url);
-                    showToast('Cashlink URL copied!', 'success');
-                } catch (_) {}
-            });
-
-            header.append(label, copyBtn);
-
-            const urlEl = document.createElement('div');
-            urlEl.className = 'cashlink-url';
-            urlEl.textContent = cl.url;
-
-            const qrContainer = document.createElement('div');
-            qrContainer.className = 'cashlink-qr';
-
-            item.append(header, urlEl, qrContainer);
-            listEl.appendChild(item);
-
-            // Render QR after DOM insertion
-            setTimeout(() => {
-                const canvas = document.createElement('canvas');
-                const styles = getComputedStyle(document.documentElement);
-                const fill = styles.getPropertyValue('--color-qr-fill').trim() || '#1F2348';
-                const bg = styles.getPropertyValue('--color-qr-bg').trim() || '#ffffff';
-                renderQr({ text: cl.url, size: 160, fill, background: bg, radius: 0.4 }, canvas);
-                qrContainer.appendChild(canvas);
-            }, 0);
-        });
+        // Render each cashlink as a simple row
+        renderCashlinkList(el.querySelector('#cashlink-list'), cashlinks.map(cl => cl.url));
 
         // Copy All
         el.querySelector('#btn-copy-all').addEventListener('click', async () => {
@@ -388,23 +433,113 @@ export async function cashlinksView() {
 
         // Export CSV
         el.querySelector('#btn-export-csv').addEventListener('click', () => {
-            const header = 'URL,Address,Amount (NIM)\n';
-            const rows = cashlinks.map(cl =>
-                `${cl.url},${cl.address},${formatNim(amountLuna)}`
-            ).join('\n');
-            const blob = new Blob([header + rows], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `cashlinks-${Date.now()}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
+            exportCsv(cashlinks.map(cl => cl.url), cashlinks.map(cl => cl.address), formatNim(amountLuna), `cashlinks-${Date.now()}.csv`);
+        });
+
+        // Save Run
+        const saveBtn = el.querySelector('#btn-save-run');
+        saveBtn.addEventListener('click', async () => {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+            try {
+                await saveCashlinkRun({
+                    urls: cashlinks.map(cl => cl.url),
+                    addresses: cashlinks.map(cl => cl.address),
+                    amountNim: formatNim(amountLuna),
+                    message: message || '',
+                });
+                saveBtn.textContent = 'Saved!';
+                showToast('Cashlink run saved', 'success');
+            } catch (e) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Run';
+                if (e.message !== 'User cancelled') {
+                    showToast('Could not save run.', 'error');
+                }
+            }
         });
 
         el.querySelector('#btn-done').addEventListener('click', () => navigate('#dashboard'));
     }
 
+    // ── Saved Run Results ───────────────────────────────────────────
+
+    function showSavedRunResults(data, runMeta) {
+        el.innerHTML = `
+            <div class="nq-card">
+                <div class="nq-card-header">
+                    <h1 class="nq-h1">Saved Cashlinks</h1>
+                    <p class="nq-text" id="saved-run-summary"></p>
+                </div>
+                <div class="nq-card-body">
+                    <div class="cashlink-actions">
+                        <button class="nq-button-s" id="btn-copy-all">Copy All URLs</button>
+                        <button class="nq-button-s" id="btn-export-csv">Export CSV</button>
+                    </div>
+                    <div class="cashlink-list" id="cashlink-list"></div>
+                </div>
+                <div class="nq-card-footer">
+                    <button class="nq-button-s" id="btn-back-to-form">Back</button>
+                </div>
+            </div>
+        `;
+
+        const summaryParts = [`${data.urls.length} cashlink${data.urls.length !== 1 ? 's' : ''}`];
+        if (runMeta.amountNim) summaryParts.push(`${runMeta.amountNim} NIM each`);
+        if (runMeta.message) summaryParts.push(`"${runMeta.message}"`);
+        el.querySelector('#saved-run-summary').textContent = summaryParts.join(' \u2014 ');
+
+        renderCashlinkList(el.querySelector('#cashlink-list'), data.urls);
+
+        // Copy All
+        el.querySelector('#btn-copy-all').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(data.urls.join('\n'));
+                showToast('All URLs copied!', 'success');
+            } catch (_) {}
+        });
+
+        // Export CSV
+        el.querySelector('#btn-export-csv').addEventListener('click', () => {
+            exportCsv(data.urls, data.addresses || [], runMeta.amountNim, `cashlinks-saved-${runMeta.id}.csv`);
+        });
+
+        el.querySelector('#btn-back-to-form').addEventListener('click', () => navigate('#cashlinks'));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────
+
+    function renderCashlinkList(container, urls) {
+        urls.forEach((url, i) => {
+            const row = document.createElement('div');
+            row.className = 'cashlink-row';
+
+            const label = document.createElement('span');
+            label.className = 'cashlink-row-label';
+            label.textContent = `#${i + 1}`;
+
+            const urlEl = document.createElement('span');
+            urlEl.className = 'cashlink-row-url';
+            urlEl.textContent = url;
+
+            row.append(label, urlEl);
+            container.appendChild(row);
+        });
+    }
+
+    function exportCsv(urls, addresses, amountNim, filename) {
+        const csvHeader = 'URL,Address,Amount (NIM)\n';
+        const csvRows = urls.map((url, i) =>
+            `${url},${addresses[i] || ''},${amountNim}`
+        ).join('\n');
+        const blob = new Blob([csvHeader + csvRows], { type: 'text/csv' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+    }
 
     function updateRowStatus(row, status, text) {
         const badge = row.querySelector('.batch-badge');

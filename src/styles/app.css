@@ -1106,49 +1106,91 @@ body {
 .cashlink-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 6px;
 }
 
-.cashlink-item {
+.cashlink-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
     background: var(--color-bg-hover);
     border: 1px solid var(--color-border-medium);
-    border-radius: 8px;
-    padding: 12px;
+    border-radius: 6px;
 }
 
-.cashlink-item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
+.cashlink-row-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    min-width: 28px;
+    flex-shrink: 0;
 }
 
-.cashlink-url {
+.cashlink-row-url {
     font-family: 'Fira Mono', monospace;
     font-size: 11px;
     word-break: break-all;
     color: var(--color-text-secondary);
-    margin-bottom: 8px;
-    padding: 6px;
-    background: var(--color-bg-active);
-    border-radius: 4px;
+    flex: 1;
     line-height: 1.4;
 }
 
-.cashlink-qr {
-    display: flex;
-    justify-content: center;
-    padding: 8px 0;
+/* ── Saved cashlink runs ────────────────────────────────────── */
+
+.saved-runs-section {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-border);
 }
 
-.cashlink-qr canvas {
+.saved-runs-section .nq-label {
+    margin-bottom: 12px;
+}
+
+.saved-runs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.saved-run-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--color-bg-hover);
+    border: 1px solid var(--color-border-medium);
     border-radius: 8px;
 }
 
-.cashlink-copy-btn {
+.saved-run-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.saved-run-date {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.saved-run-details {
     font-size: 12px;
-    padding: 4px 10px !important;
-    min-width: auto;
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.saved-run-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .file-upload-wrapper {

@@ -209,6 +209,30 @@ async function deriveEntropyFromPrf(prfKeyBytes, nonce) {
     return new Uint8Array(derived);
 }
 
+// ── Cashlink data encryption key ──────────────────────────────────
+// Derives a purpose-specific AES-256 key from wallet entropy for encrypting
+// saved cashlink runs. Uses the same HKDF salt but a different info parameter
+// to ensure cryptographic independence from other entropy-derived keys.
+
+const CASHLINK_ENC_INFO = new TextEncoder().encode('cashlink-data-encryption');
+
+async function deriveCashlinkEncKey(entropy) {
+    const entropyBytes = entropy.serialize();
+    try {
+        const ikm = await crypto.subtle.importKey(
+            'raw', entropyBytes, 'HKDF', false, ['deriveBits'],
+        );
+        const derived = await crypto.subtle.deriveBits(
+            { name: 'HKDF', hash: 'SHA-256', salt: HKDF_SALT, info: CASHLINK_ENC_INFO },
+            ikm,
+            256,
+        );
+        return new Uint8Array(derived);
+    } finally {
+        entropyBytes.fill(0);
+    }
+}
+
 // ── WASM init ──────────────────────────────────────────────────────
 
 let wasmReady = false;
@@ -730,6 +754,72 @@ const handlers = {
             }
         }
         return { keys };
+    },
+
+    async encryptCashlinkData({ data, password, prfKey }) {
+        await ensureWasm();
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+
+        let entropy;
+        if (prfKey) {
+            entropy = await decryptWithPrfKey(record, prfKey);
+        } else {
+            const passwordBuf = new TextEncoder().encode(password);
+            try {
+                entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+            } catch (_) { throw new Error('Wrong password'); }
+            finally { passwordBuf.fill(0); }
+        }
+
+        try {
+            const encKey = await deriveCashlinkEncKey(entropy);
+            try {
+                const plaintext = new TextEncoder().encode(data);
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const aesKey = await crypto.subtle.importKey(
+                    'raw', encKey, { name: 'AES-GCM' }, false, ['encrypt'],
+                );
+                const ciphertext = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv }, aesKey, plaintext,
+                );
+                return {
+                    ciphertext: Array.from(new Uint8Array(ciphertext)),
+                    iv: Array.from(iv),
+                };
+            } finally { encKey.fill(0); }
+        } finally { zeroEntropy(entropy); }
+    },
+
+    async decryptCashlinkData({ ciphertext, iv, password, prfKey }) {
+        await ensureWasm();
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+
+        let entropy;
+        if (prfKey) {
+            entropy = await decryptWithPrfKey(record, prfKey);
+        } else {
+            const passwordBuf = new TextEncoder().encode(password);
+            try {
+                entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+            } catch (_) { throw new Error('Wrong password'); }
+            finally { passwordBuf.fill(0); }
+        }
+
+        try {
+            const encKey = await deriveCashlinkEncKey(entropy);
+            try {
+                const aesKey = await crypto.subtle.importKey(
+                    'raw', encKey, { name: 'AES-GCM' }, false, ['decrypt'],
+                );
+                const plaintext = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: new Uint8Array(iv) },
+                    aesKey, new Uint8Array(ciphertext),
+                );
+                return { data: new TextDecoder().decode(plaintext) };
+            } finally { encKey.fill(0); }
+        } finally { zeroEntropy(entropy); }
     },
 };
 

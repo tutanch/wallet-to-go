@@ -150,6 +150,7 @@ const UI_COMMANDS = new Set([
     'createWallet', 'importWallet', 'signTransaction', 'signBatchTransaction',
     'exportMnemonic', 'deleteWallet', 'unlock', 'restoreWithPasskey',
     'registerWebAuthn', 'removeWebAuthn', 'switchAccount',
+    'encryptCashlinkData', 'decryptCashlinkData',
 ]);
 
 function call(command, args, timeoutMs = 120000) {
@@ -334,4 +335,20 @@ export async function switchAccount() {
  */
 export function generateCashlinkKeys({ count }) {
     return call('generateCashlinkKeys', { count }, 30000);
+}
+
+/**
+ * Encrypt cashlink data. Keyguard shows auth prompt (passkey/password).
+ * Returns { ciphertext: number[], iv: number[] }.
+ */
+export function encryptCashlinkData({ data }) {
+    return call('encryptCashlinkData', { data });
+}
+
+/**
+ * Decrypt cashlink data. Keyguard shows auth prompt (passkey/password).
+ * Returns { data: string }.
+ */
+export function decryptCashlinkData({ ciphertext, iv }) {
+    return call('decryptCashlinkData', { ciphertext, iv });
 }
