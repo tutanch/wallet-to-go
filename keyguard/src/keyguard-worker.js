@@ -141,30 +141,37 @@ function deriveAddress(entropy) {
 // wallet entropy, which would tightly couple wallet security to the
 // authenticator's PRF implementation quality.
 //
-// An optional per-wallet nonce (stored in the passkey's userHandle) is
-// appended to the HKDF info. This ensures that each wallet creation
-// produces unique entropy even if the platform reuses the same passkey
-// credential (same PRF output). On another device, get() returns the
-// userHandle → same nonce → same wallet.
+// A per-wallet nonce (derived from a deterministic account index) is
+// appended to the HKDF info. This ensures each account produces unique
+// entropy even if the platform reuses the same passkey credential (same
+// PRF output). The nonce is deterministic: same index → same nonce →
+// same wallet on any device.
 
 const HKDF_SALT = new TextEncoder().encode('nimiq-wallet-hkdf-v1');
 const HKDF_INFO = new TextEncoder().encode('cross-device-entropy');
+
+// Build a structured 32-byte nonce from a sequential account index.
+// Format: "NIM\x01" (4 bytes magic) + uint32 BE index + 24 bytes zero padding.
+function buildIndexNonce(index) {
+    const nonce = new Uint8Array(32);
+    nonce[0] = 0x4E; // 'N'
+    nonce[1] = 0x49; // 'I'
+    nonce[2] = 0x4D; // 'M'
+    nonce[3] = 0x01; // version 1
+    const view = new DataView(nonce.buffer);
+    view.setUint32(4, index, false); // big-endian
+    return nonce;
+}
 
 async function deriveEntropyFromPrf(prfKeyBytes, nonce) {
     const ikm = await crypto.subtle.importKey(
         'raw', new Uint8Array(prfKeyBytes), 'HKDF', false, ['deriveBits'],
     );
-    // Include per-wallet nonce in HKDF info when present (new-style wallets).
-    // Old wallets (no nonce) use the base info for backward compatibility.
-    let info = HKDF_INFO;
-    if (nonce && nonce.length > 0) {
-        const combined = new Uint8Array(HKDF_INFO.length + nonce.length);
-        combined.set(HKDF_INFO);
-        combined.set(new Uint8Array(nonce), HKDF_INFO.length);
-        info = combined;
-    }
+    const combined = new Uint8Array(HKDF_INFO.length + nonce.length);
+    combined.set(HKDF_INFO);
+    combined.set(new Uint8Array(nonce), HKDF_INFO.length);
     const derived = await crypto.subtle.deriveBits(
-        { name: 'HKDF', hash: 'SHA-256', salt: HKDF_SALT, info },
+        { name: 'HKDF', hash: 'SHA-256', salt: HKDF_SALT, info: combined },
         ikm,
         256,
     );
@@ -185,68 +192,6 @@ async function ensureWasm() {
 // Between createWallet() and saveWallet(), entropy lives only here.
 let pendingEntropy = null;
 
-// ── Passkey backup database ───────────────────────────────────────
-// Separate DB so it survives wallet deletion. Stores only the
-// PRF-encrypted entropy + credential metadata — no password data.
-
-const BACKUP_DB_NAME = 'nimiq-passkey-backup';
-const BACKUP_STORE = 'backup';
-
-function connectBackupDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(BACKUP_DB_NAME, 1);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-        request.onupgradeneeded = () => {
-            request.result.createObjectStore(BACKUP_STORE, { keyPath: 'id' });
-        };
-    });
-}
-
-async function savePasskeyBackup(webauthnData, defaultAddress) {
-    const db = await connectBackupDB();
-    const tx = db.transaction([BACKUP_STORE], 'readwrite');
-    const request = tx.objectStore(BACKUP_STORE).put({
-        id: 'backup',
-        credentialId: webauthnData.credentialId,
-        prfSalt: webauthnData.prfSalt,
-        encryptedSecret: webauthnData.encryptedSecret,
-        iv: webauthnData.iv,
-        defaultAddress,
-    });
-    await txPromise(request, tx);
-    db.close();
-}
-
-async function getPasskeyBackupRecord() {
-    let db;
-    try {
-        db = await connectBackupDB();
-    } catch (_) {
-        return null;
-    }
-    const tx = db.transaction([BACKUP_STORE], 'readonly');
-    const request = tx.objectStore(BACKUP_STORE).get('backup');
-    const result = await new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-    });
-    db.close();
-    return result;
-}
-
-async function clearPasskeyBackup() {
-    let db;
-    try {
-        db = await connectBackupDB();
-    } catch (_) {
-        return;
-    }
-    const tx = db.transaction([BACKUP_STORE], 'readwrite');
-    tx.objectStore(BACKUP_STORE).clear();
-    await new Promise((resolve) => { tx.oncomplete = resolve; });
-    db.close();
-}
 
 // ── WebAuthn AES-GCM helpers ──────────────────────────────────────
 
@@ -305,8 +250,9 @@ const handlers = {
         };
     },
 
-    async createWalletFromPrf({ prfKey, nonce }) {
+    async createWalletFromPrf({ prfKey, accountIndex }) {
         await ensureWasm();
+        const nonce = buildIndexNonce(accountIndex);
         const derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
         const entropy = new Entropy(derivedBytes);
         derivedBytes.fill(0);
@@ -570,12 +516,6 @@ const handlers = {
     },
 
     async deleteWallet() {
-        // Preserve PRF-encrypted backup before deleting (enables passkey restore)
-        const record = await getRecord();
-        if (record?.webauthn) {
-            await savePasskeyBackup(record.webauthn, record.defaultAddress);
-        }
-
         if (dbPromise) {
             const db = await dbPromise;
             db.close();
@@ -644,53 +584,29 @@ const handlers = {
         return !!(record && record.secret);
     },
 
-    async hasPasskeyBackup() {
-        const backup = await getPasskeyBackupRecord();
-        if (!backup) return { hasBackup: false };
-        return {
-            hasBackup: true,
-            credentialId: backup.credentialId,
-            prfSalt: backup.prfSalt,
-        };
+    // Scan account indices 0..maxIndex and derive the address for each.
+    // Used during passkey restore to find which accounts exist.
+    async scanAccountAddresses({ prfKey, maxIndex = 20 }) {
+        await ensureWasm();
+        const addresses = [];
+        for (let i = 0; i <= maxIndex; i++) {
+            const nonce = buildIndexNonce(i);
+            const derived = await deriveEntropyFromPrf(prfKey, nonce);
+            const entropy = new Entropy(derived);
+            const addr = deriveAddress(entropy);
+            addresses.push({ index: i, address: addr.toUserFriendlyAddress() });
+            zeroEntropy(entropy);
+            derived.fill(0);
+        }
+        return { addresses };
     },
 
-    async restoreWithPasskey({ prfKey, password, credentialId, prfSalt, nonce, fromBackup, allowOverwrite }) {
+    async restoreWithPasskey({ prfKey, credentialId, prfSalt, accountIndex, allowOverwrite }) {
         await ensureWasm();
 
-        let entropy;
-        let derivedBytes;
-        let storedCredentialId;
-        let storedPrfSalt;
-
-        if (fromBackup) {
-            // Same-device restore: decrypt entropy from backup
-            const backup = await getPasskeyBackupRecord();
-            if (!backup) throw new Error('No passkey backup found');
-
-            const aesKey = await crypto.subtle.importKey(
-                'raw', new Uint8Array(prfKey), { name: 'AES-GCM' }, false, ['decrypt'],
-            );
-            let entropyBytes;
-            try {
-                entropyBytes = await crypto.subtle.decrypt(
-                    { name: 'AES-GCM', iv: backup.iv }, aesKey, backup.encryptedSecret,
-                );
-            } catch (_) {
-                throw new Error('Passkey decryption failed');
-            }
-            entropy = new Entropy(new Uint8Array(entropyBytes));
-            storedCredentialId = backup.credentialId;
-            storedPrfSalt = backup.prfSalt;
-        } else {
-            // Cross-device restore: derive entropy from PRF output via HKDF.
-            // The nonce (from the passkey's userHandle) is included in the HKDF
-            // info so each wallet creation produces unique entropy even if the
-            // platform reuses the same credential.
-            derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
-            entropy = new Entropy(derivedBytes);
-            storedCredentialId = new Uint8Array(credentialId);
-            storedPrfSalt = new Uint8Array(prfSalt);
-        }
+        const nonce = buildIndexNonce(accountIndex);
+        const derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
+        const entropy = new Entropy(derivedBytes);
 
         try {
             const address = deriveAddress(entropy);
@@ -698,8 +614,6 @@ const handlers = {
             // Safety check: if a wallet already exists with a DIFFERENT address,
             // refuse to overwrite it (unless the caller explicitly allows it,
             // e.g. when restoring from the welcome screen after "Use a different wallet").
-            // Prevents the lock screen from silently replacing the user's wallet
-            // when they pick the wrong passkey.
             const existing = await getRecord();
             if (existing && !allowOverwrite) {
                 const existingAddr = Address.fromAny(existing.defaultAddress).toUserFriendlyAddress();
@@ -716,35 +630,22 @@ const handlers = {
                 defaultAddress: address.serialize(),
             };
 
-            // Password encryption (optional)
-            if (password) {
-                const passwordBuf = new TextEncoder().encode(password);
-                try {
-                    record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
-                } finally {
-                    passwordBuf.fill(0);
-                }
-            }
-
-            // Encrypt entropy with PRF key for future WebAuthn use
-            const { encryptedSecret, iv: newIv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
+            // Encrypt entropy with PRF key for future WebAuthn unlock
+            const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
 
             record.webauthn = {
-                credentialId: storedCredentialId,
-                prfSalt: storedPrfSalt,
+                credentialId: new Uint8Array(credentialId),
+                prfSalt: new Uint8Array(prfSalt),
                 encryptedSecret,
-                iv: newIv,
+                iv,
             };
 
             await putActiveRecord(record);
 
-            // Clear backup if it existed
-            await clearPasskeyBackup();
-
             return { address: address.toUserFriendlyAddress() };
         } finally {
             zeroEntropy(entropy);
-            if (derivedBytes) derivedBytes.fill(0);
+            derivedBytes.fill(0);
         }
     },
 

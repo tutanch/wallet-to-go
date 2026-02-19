@@ -26,9 +26,14 @@ async function isPrfSupported() {
     return true;
 }
 
-async function createCredential({ userId, userName, prfSalt }) {
+async function createCredential({ userId, userName, prfSalt, excludeCredentialIds }) {
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const salt = new Uint8Array(prfSalt);
+
+    const excludeCredentials = (excludeCredentialIds || []).map(id => ({
+        type: 'public-key',
+        id: new Uint8Array(id),
+    }));
 
     const credential = await navigator.credentials.create({
         publicKey: {
@@ -44,10 +49,10 @@ async function createCredential({ userId, userName, prfSalt }) {
                 { alg: -257, type: 'public-key' },  // RS256
             ],
             authenticatorSelection: {
-                authenticatorAttachment: 'platform',
                 userVerification: 'required',
-                residentKey: 'preferred',
+                residentKey: 'required',
             },
+            excludeCredentials,
             extensions: {
                 prf: { eval: { first: salt } },
             },

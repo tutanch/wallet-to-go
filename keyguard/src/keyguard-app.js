@@ -393,11 +393,12 @@ function nextPasskeyName() {
     return `Nimiq Wallet - ${n}`;
 }
 
-async function createWebAuthnCredential(userId, userName, prfSalt) {
+async function createWebAuthnCredential(userId, userName, prfSalt, excludeCredentialIds) {
     return await requestWebAuthnFromWallet('create', {
         userId: Array.from(userId),
         userName,
         prfSalt: Array.from(prfSalt),
+        excludeCredentialIds,
     });
     // Returns { credentialId: number[], prfKey: number[] }
 }
@@ -481,7 +482,7 @@ async function offerWebAuthnRegistration(password, addressString) {
 
             try {
                 const prfSalt = generatePrfSalt();
-                const userId = new TextEncoder().encode(addressString.substring(0, 32));
+                const userId = crypto.getRandomValues(new Uint8Array(32));
                 const { credentialId, prfKey } = await createWebAuthnCredential(
                     userId, addressString, prfSalt,
                 );
@@ -517,6 +518,29 @@ function setUI(html) {
     ui.innerHTML = html;
 }
 
+// Build a structured 32-byte nonce from a sequential account index.
+// Format: "NIM\x01" (4 bytes magic) + uint32 BE index + 24 bytes zero.
+function buildIndexNonce(index) {
+    const nonce = new Uint8Array(32);
+    nonce[0] = 0x4E; // 'N'
+    nonce[1] = 0x49; // 'I'
+    nonce[2] = 0x4D; // 'M'
+    nonce[3] = 0x01; // version 1
+    const view = new DataView(nonce.buffer);
+    view.setUint32(4, index, false); // big-endian
+    return nonce;
+}
+
+// Track the next account index for multi-account passkey wallets.
+function getNextAccountIndex() {
+    return parseInt(localStorage.getItem('nimiq-account-idx') || '0', 10);
+}
+function bumpAccountIndex() {
+    const next = getNextAccountIndex() + 1;
+    localStorage.setItem('nimiq-account-idx', String(next));
+    return next;
+}
+
 async function flowCreateWallet() {
     showUI();
 
@@ -524,13 +548,11 @@ async function flowCreateWallet() {
 
     if (prfSupported) {
         // Offer passkey — wallet entropy is derived deterministically from
-        // the PRF output + a per-wallet nonce stored in the passkey's
-        // userHandle. Different nonce = different wallet, even if the
-        // platform reuses the same credential.
+        // HKDF(PRF_output, account_index). Each index produces a unique
+        // wallet, and scanning indices on another device restores them all.
         setUI(renderWebAuthnPrompt());
 
         ui.querySelector('#btn-skip').onclick = () => {
-            // User skipped passkey → random entropy + password
             setUI('');
             flowCreateWalletRandom();
         };
@@ -541,17 +563,16 @@ async function flowCreateWallet() {
             setButtonState(btn, 'Registering...', true);
 
             try {
-                // 32-byte userId doubles as the per-wallet nonce for HKDF.
-                // On another device, get() returns this via userHandle.
-                const userId = crypto.getRandomValues(new Uint8Array(32));
+                const accountIndex = getNextAccountIndex();
+                const userId = buildIndexNonce(accountIndex);
                 const { credentialId, prfKey } = await createWebAuthnCredential(
                     userId, nextPasskeyName(), RESTORE_PRF_SALT,
                 );
 
-                // Derive wallet deterministically from PRF output + nonce
+                // Derive wallet deterministically from PRF output + account index
                 const walletData = await callWorker('createWalletFromPrf', {
                     prfKey: Array.from(prfKey),
-                    nonce: Array.from(userId),
+                    accountIndex,
                 });
 
                 // Show mnemonic (derived from passkey — same on any device)
@@ -573,6 +594,7 @@ async function flowCreateWallet() {
                         prfSalt: Array.from(RESTORE_PRF_SALT),
                     });
                     prfKey.fill(0);
+                    bumpAccountIndex();
                     resolveSession({ address: walletData.address });
                 };
             } catch (err) {
@@ -688,7 +710,7 @@ async function flowImportWallet() {
 
                 try {
                     const prfSalt = generatePrfSalt();
-                    const userId = crypto.getRandomValues(new Uint8Array(16));
+                    const userId = crypto.getRandomValues(new Uint8Array(32));
                     const { credentialId, prfKey } = await createWebAuthnCredential(
                         userId, nextPasskeyName(), prfSalt,
                     );
@@ -1278,7 +1300,7 @@ async function flowRegisterWebAuthn() {
             try {
                 const address = await callWorker('getStoredAddress');
                 const prfSalt = generatePrfSalt();
-                const userId = new TextEncoder().encode((address || '').substring(0, 32));
+                const userId = crypto.getRandomValues(new Uint8Array(32));
                 const { credentialId, prfKey } = await createWebAuthnCredential(
                     userId, address || 'Nimiq Wallet', prfSalt,
                 );
@@ -1316,16 +1338,31 @@ const RESTORE_PRF_SALT = new Uint8Array([
     45,118,49,0,0,0,0,0,0,0,0,0,0,0,0,0,
 ]); // "nimiq-wallet-prf-v1" padded to 32 bytes
 
+function renderAccountPicker(addresses) {
+    const rows = addresses.map(({ index, address }) => `
+        <button type="button" class="account-row" data-index="${index}">
+            <span class="account-index">#${index + 1}</span>
+            <span class="account-address">${escHtml(address)}</span>
+        </button>`).join('');
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Select Wallet</h1>
+                    <p>Choose which wallet to restore.</p>
+                </div>
+                <div class="keyguard-body" style="max-height:340px;overflow-y:auto;">
+                    <div class="account-list">${rows}</div>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>`;
+}
+
 async function flowRestoreWithPasskey(args) {
     showUI();
-
-    // Check for same-device backup first
-    let backup;
-    try {
-        backup = await callWorker('hasPasskeyBackup');
-    } catch (_) {
-        backup = { hasBackup: false };
-    }
 
     setUI(`
         <div class="keyguard-container">
@@ -1353,44 +1390,12 @@ async function flowRestoreWithPasskey(args) {
 
         let prfKey;
         let credentialId;
-        let prfSalt;
-        let nonce = null;
-        let fromBackup = false;
 
         try {
-            // Always use discoverable flow so the browser shows the passkey picker.
-            // If a backup exists, pass its salt as a second PRF eval so we get
-            // both outputs in a single ceremony (no second WebAuthn prompt).
             const params = { prfSalt: Array.from(RESTORE_PRF_SALT) };
-            if (backup.hasBackup) {
-                params.secondPrfSalt = Array.from(new Uint8Array(backup.prfSalt));
-            }
             const result = await requestWebAuthnFromWallet('getForRestore', params);
-
-            // Check if the user selected the backed-up credential
-            const selectedId = JSON.stringify(result.credentialId);
-            const backupId = backup.hasBackup
-                ? JSON.stringify(Array.from(new Uint8Array(backup.credentialId)))
-                : null;
-
-            if (backup.hasBackup && selectedId === backupId && result.prfKeySecond) {
-                // Selected credential matches backup — decrypt original wallet
-                prfKey = result.prfKeySecond;
-                credentialId = result.credentialId;
-                prfSalt = backup.prfSalt;
-                fromBackup = true;
-            } else {
-                // Different credential or no backup — derive wallet from PRF.
-                // Use the userHandle (set as userId during create) as the
-                // per-wallet nonce for HKDF derivation. New-style wallets
-                // use 32-byte userHandles; old-style used 16-byte (no nonce).
-                prfKey = result.prfKey;
-                credentialId = result.credentialId;
-                prfSalt = RESTORE_PRF_SALT;
-                if (result.userHandle && result.userHandle.length === 32) {
-                    nonce = result.userHandle;
-                }
-            }
+            prfKey = result.prfKey;
+            credentialId = result.credentialId;
         } catch (err) {
             setButtonState(btn, 'Authenticate', false);
             if (err.name === 'NotAllowedError') {
@@ -1403,24 +1408,56 @@ async function flowRestoreWithPasskey(args) {
             return;
         }
 
-        // Restore wallet with passkey only (no password needed)
-        setButtonState(btn, 'Restoring...', true);
+        // Scan account indices to find all wallets for this passkey.
+        // Derive addresses for indices 0..9 and let the user pick.
+        setButtonState(btn, 'Scanning accounts...', true);
+        let addresses;
         try {
-            const result = await callWorker('restoreWithPasskey', {
+            const scan = await callWorker('scanAccountAddresses', {
                 prfKey: Array.from(prfKey),
-                credentialId: Array.from(new Uint8Array(credentialId)),
-                prfSalt: Array.from(new Uint8Array(prfSalt)),
-                nonce,
-                fromBackup,
-                allowOverwrite: !!args.allowOverwrite,
+                maxIndex: 9,
             });
-            if (prfKey.fill) prfKey.fill(0);
-            resolveSession({ address: result.address });
+            addresses = scan.addresses;
         } catch (err) {
             if (prfKey.fill) prfKey.fill(0);
             setButtonState(btn, 'Authenticate', false);
-            showError(errorEl, 'Restoration failed: ' + err.message);
+            showError(errorEl, 'Failed to scan accounts.');
+            return;
         }
+
+        // Helper to restore a specific account index
+        async function restoreAccount(accountIndex) {
+            try {
+                const result = await callWorker('restoreWithPasskey', {
+                    prfKey: Array.from(prfKey),
+                    credentialId: Array.from(new Uint8Array(credentialId)),
+                    prfSalt: Array.from(RESTORE_PRF_SALT),
+                    accountIndex,
+                    allowOverwrite: !!args.allowOverwrite,
+                });
+                if (prfKey.fill) prfKey.fill(0);
+                resolveSession({ address: result.address });
+            } catch (err) {
+                if (prfKey.fill) prfKey.fill(0);
+                showError(errorEl || ui.querySelector('#error') || document.createElement('p'),
+                    'Restoration failed: ' + err.message);
+            }
+        }
+
+        // Show account picker — user selects by recognizing their address
+        setUI(renderAccountPicker(addresses));
+        ui.querySelector('#btn-cancel').onclick = () => {
+            if (prfKey.fill) prfKey.fill(0);
+            rejectSession('User cancelled');
+        };
+        ui.querySelectorAll('.account-row').forEach(row => {
+            row.onclick = async () => {
+                const idx = parseInt(row.dataset.index, 10);
+                ui.querySelectorAll('.account-row').forEach(r => { r.disabled = true; });
+                row.style.opacity = '0.6';
+                await restoreAccount(idx);
+            };
+        });
     };
 }
 
