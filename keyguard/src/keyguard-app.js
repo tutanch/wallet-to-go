@@ -1553,10 +1553,13 @@ async function flowRestoreWithPasskey(args) {
             <div class="keyguard-card">
                 <div class="keyguard-header">
                     <h1>Login with Passkey</h1>
-                    <p>Authenticate with your passkey to access your wallet.</p>
+                    <p>Tap to authenticate with your passkey.</p>
                 </div>
-                <div class="keyguard-body" style="text-align:center;">
-                    <button id="btn-auth" type="button" class="btn-primary">Authenticate</button>
+                <div class="keyguard-body biometric-auth-body">
+                    <button id="btn-biometric" type="button" class="biometric-trigger">
+                        ${FINGERPRINT_SVG}
+                        <span class="biometric-hint">Tap to login</span>
+                    </button>
                     <p class="error-text" id="error" style="display:none;"></p>
                 </div>
                 <div class="keyguard-footer">
@@ -1567,10 +1570,13 @@ async function flowRestoreWithPasskey(args) {
     `);
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-auth').onclick = async () => {
-        const btn = ui.querySelector('#btn-auth');
-        const errorEl = ui.querySelector('#error');
-        setButtonState(btn, 'Authenticating...', true);
+
+    const biometricBtn = ui.querySelector('#btn-biometric');
+    const errorEl = ui.querySelector('#error');
+
+    biometricBtn.onclick = async () => {
+        biometricBtn.disabled = true;
+        biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
 
         let prfKey;
         let credentialId;
@@ -1581,19 +1587,19 @@ async function flowRestoreWithPasskey(args) {
             prfKey = result.prfKey;
             credentialId = result.credentialId;
         } catch (err) {
-            setButtonState(btn, 'Authenticate', false);
+            biometricBtn.disabled = false;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to login';
             if (err.name === 'NotAllowedError') {
-                showError(errorEl, 'Authentication cancelled or no passkey found.');
+                showError(errorEl, 'Cancelled or no passkey found. Tap to try again.');
             } else if (err.message === 'PRF output not available') {
                 showError(errorEl, 'Your device does not support passkey login.');
             } else {
-                showError(errorEl, 'Passkey authentication failed.');
+                showError(errorEl, 'Failed. Tap to try again.');
             }
             return;
         }
 
-        // Scan account indices and show the picker with balances
-        setButtonState(btn, 'Scanning accounts...', true);
+        biometricBtn.querySelector('.biometric-hint').textContent = 'Scanning accounts...';
         await showAccountPickerFlow({ prfKey, credentialId, allowOverwrite: !!args.allowOverwrite, errorEl });
     };
 }
@@ -1608,10 +1614,13 @@ async function flowSwitchAccount() {
             <div class="keyguard-card">
                 <div class="keyguard-header">
                     <h1>Switch Account</h1>
-                    <p>Authenticate with your passkey, then pick an account.</p>
+                    <p>Tap to authenticate, then pick an account.</p>
                 </div>
-                <div class="keyguard-body" style="text-align:center;">
-                    <button id="btn-auth" type="button" class="btn-primary">Authenticate</button>
+                <div class="keyguard-body biometric-auth-body">
+                    <button id="btn-biometric" type="button" class="biometric-trigger">
+                        ${FINGERPRINT_SVG}
+                        <span class="biometric-hint">Tap to authenticate</span>
+                    </button>
                     <p class="error-text" id="error" style="display:none;"></p>
                 </div>
                 <div class="keyguard-footer">
@@ -1622,10 +1631,13 @@ async function flowSwitchAccount() {
     `);
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-auth').onclick = async () => {
-        const btn = ui.querySelector('#btn-auth');
-        const errorEl = ui.querySelector('#error');
-        setButtonState(btn, 'Authenticating...', true);
+
+    const biometricBtn = ui.querySelector('#btn-biometric');
+    const errorEl = ui.querySelector('#error');
+
+    biometricBtn.onclick = async () => {
+        biometricBtn.disabled = true;
+        biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
 
         let prfKey;
         let credentialId;
@@ -1636,16 +1648,17 @@ async function flowSwitchAccount() {
             prfKey = result.prfKey;
             credentialId = result.credentialId;
         } catch (err) {
-            setButtonState(btn, 'Authenticate', false);
+            biometricBtn.disabled = false;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to authenticate';
             if (err.name === 'NotAllowedError') {
-                showError(errorEl, 'Authentication cancelled.');
+                showError(errorEl, 'Cancelled. Tap to try again.');
             } else {
-                showError(errorEl, 'Passkey authentication failed.');
+                showError(errorEl, 'Failed. Tap to try again.');
             }
             return;
         }
 
-        setButtonState(btn, 'Scanning accounts...', true);
+        biometricBtn.querySelector('.biometric-hint').textContent = 'Scanning accounts...';
         await showAccountPickerFlow({ prfKey, credentialId, allowOverwrite: true, errorEl });
     };
 }
