@@ -574,9 +574,14 @@ const handlers = {
             iv: newIv,
         };
 
+        // Clear any existing records first to prevent multi-record ambiguity
+        // (e.g. if a different wallet was stored, getRecord's cursor semantics
+        // would return whichever id sorts first, not necessarily this one)
         const db = await connectDB();
         const tx = db.transaction([STORE_NAME], 'readwrite');
-        const request = tx.objectStore(STORE_NAME).put(record);
+        const store = tx.objectStore(STORE_NAME);
+        store.clear();
+        const request = store.put(record);
         await txPromise(request, tx);
 
         // Clear backup if it existed

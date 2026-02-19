@@ -233,7 +233,7 @@ function renderDeleteConfirm({ showPassword = true } = {}) {
             <div class="keyguard-card">
                 <div class="keyguard-header">
                     <h1>Delete Wallet</h1>
-                    <p>This permanently removes your wallet from this device. Make sure you have your recovery words backed up!</p>
+                    <p>This removes your wallet from this device. If you set up a passkey, an encrypted backup is kept so you can log back in with it. Make sure you have your recovery words backed up!</p>
                 </div>
                 <form id="delete-form" style="display: contents;">
                     <div class="keyguard-body">

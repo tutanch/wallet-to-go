@@ -9,6 +9,18 @@
 (function() {
     'use strict';
 
+    // Anti-clickjacking: prevent the wallet from being embedded in an
+    // attacker's iframe. frame-ancestors CSP cannot be set via <meta> tags,
+    // and GitHub Pages does not support custom HTTP headers.
+    try {
+        if (window.self !== window.top) {
+            window.top.location = window.self.location;
+        }
+    } catch (_) {
+        // Cross-origin parent — hide the page entirely
+        document.documentElement.style.display = 'none';
+    }
+
     // Freeze crypto APIs
     try {
         if (window.crypto && window.crypto.subtle) {

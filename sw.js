@@ -1,15 +1,16 @@
 // AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
-// Generated from git SHA: 5cb34ba
+// Generated from git SHA: 84da840
 //
 // Security guarantee: if any file on the server has a different hash than
 // what is listed here, the SW install fails and the previous known-good SW
 // continues serving users. Tampered files cannot reach returning visitors.
 
-const CACHE_NAME = 'nimiq-wallet-v5cb34ba';
+const CACHE_NAME = 'nimiq-wallet-v84da840';
 
 // SHA-256 hashes of every file. Computed at deploy time.
 const FILE_HASHES = {
+    "CLAUDE.md": "sha256-kkD3sMbBKJ9U/2+tLK5wnbHJxVmBNRmM+0f3F7g5Rt0=",
     "index.html": "sha256-er5PFRUNcq9BktqgaMfE2sWTSgfFEgQgdm7UTIxFCTk=",
     "lib/nimiq-core/launcher/browser/client-proxy.mjs": "sha256-Sb8Y+9RMqbO/izMVCPktL+SAh6J8fQA0Eg/H/A04OVE=",
     "lib/nimiq-core/launcher/browser/cryptoutils-worker-proxy.mjs": "sha256-lVzO7i4UTv4RT+wjriAuAQ2ubt0S74AtDSOfs2/fU38=",
@@ -35,7 +36,7 @@ const FILE_HASHES = {
     "src/modules/webauthn.js": "sha256-38Q3Rfi/1GWoTwdv4YvPp5SrPM368AzxMNdso+HJTKU=",
     "src/nimiq.js": "sha256-AK7iYfQuGDUfl5b1wdB4Pp3VNjgwSMl/fZxFWjabDyg=",
     "src/router.js": "sha256-V0p8N2tFF5+GX55/RFzs+cs1kjL62uO2EkMMjg3gI3o=",
-    "src/security-init.js": "sha256-rzKBbm4MWiELBfCSCwSnTSq3gqofgmjPSqcbcDHydiE=",
+    "src/security-init.js": "sha256-DW6md4i2Wczj8gelVD4JO6squ4/HUFW/8iEn5at/9kc=",
     "src/styles/app.css": "sha256-7bLsXh5c4kNz9sNLGcOlQwhz2j/37VzWliOOp947+xM=",
     "src/views/create-view.js": "sha256-D1RaBIoMNxhlJlGFN+LQepngZ3nyAOn/d1NojyA/Nj4=",
     "src/views/dashboard-view.js": "sha256-zOGXsKlM06pkaq2C4aqPrqejw8c0N8hIefBfY15G3gc=",
@@ -44,7 +45,7 @@ const FILE_HASHES = {
     "src/views/lock-view.js": "sha256-ZKKuhRBBST8iobro/RR5nAMdTxEuh7bP1S4BWrvV7wQ=",
     "src/views/receive-view.js": "sha256-/EKIYFNW11Lp1gNyL5w+Hz/EPuCnH7RjIxKE6iiFtBQ=",
     "src/views/send-view.js": "sha256-j3Pp8RgjILxEc7vt+Fysiuh0tsONV/IYI6RLiYvexi8=",
-    "src/views/settings-view.js": "sha256-rF6ielMa+n7Q5vRoOodgni2u3fNocYYWtrBi2oBNYS8=",
+    "src/views/settings-view.js": "sha256-/zLFPNOodf/Xckr1ladrn/W9wWyPQmRaYjqq9sMvQ2Y=",
     "src/views/welcome-view.js": "sha256-FE1oq6NVCfidiy4Uz9nnHhGX+QZjecX4mApdyq8GiiE="
 };
 
@@ -127,9 +128,31 @@ self.addEventListener('fetch', (event) => {
             if (actualHash === FILE_HASHES[relPath]) {
                 return cached;
             }
-            // Hash mismatch — evict the poisoned entry and fall back to network
+            // Hash mismatch — evict and fail closed (do not serve tampered content)
             await cache.delete(event.request);
+            return new Response('Integrity check failed', {
+                status: 500, statusText: 'Integrity Error',
+            });
         }
-        return fetch(event.request);
+        // Cache miss (e.g. storage eviction) — fetch and verify before serving
+        const response = await fetch(event.request);
+        if (!response.ok) return response;
+        const buf = await response.arrayBuffer();
+        const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(hashBuf)));
+        const actualHash = `sha256-${b64}`;
+        if (actualHash !== FILE_HASHES[relPath]) {
+            return new Response('Integrity check failed', {
+                status: 500, statusText: 'Integrity Error',
+            });
+        }
+        // Verified — re-cache and serve
+        const verified = new Response(buf, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+        });
+        await cache.put(event.request, verified.clone());
+        return verified;
     })());
 });

@@ -160,10 +160,32 @@ self.addEventListener('fetch', (event) => {
             if (actualHash === FILE_HASHES[relPath]) {
                 return cached;
             }
-            // Hash mismatch — evict the poisoned entry and fall back to network
+            // Hash mismatch — evict and fail closed (do not serve tampered content)
             await cache.delete(event.request);
+            return new Response('Integrity check failed', {
+                status: 500, statusText: 'Integrity Error',
+            });
         }
-        return fetch(event.request);
+        // Cache miss (e.g. storage eviction) — fetch and verify before serving
+        const response = await fetch(event.request);
+        if (!response.ok) return response;
+        const buf = await response.arrayBuffer();
+        const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(hashBuf)));
+        const actualHash = \`sha256-\${b64}\`;
+        if (actualHash !== FILE_HASHES[relPath]) {
+            return new Response('Integrity check failed', {
+                status: 500, statusText: 'Integrity Error',
+            });
+        }
+        // Verified — re-cache and serve
+        const verified = new Response(buf, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+        });
+        await cache.put(event.request, verified.clone());
+        return verified;
     })());
 });
 `;

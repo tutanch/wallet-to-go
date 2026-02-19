@@ -45,7 +45,7 @@ export function settingsView() {
                 <div class="settings-section danger-section">
                     <h2 class="nq-label">Danger Zone</h2>
                     <button class="nq-button-s red" id="btn-logout">Logout &amp; Delete Wallet</button>
-                    <p class="nq-text danger-text">This will remove your wallet from this device. Make sure you have your recovery words backed up!</p>
+                    <p class="nq-text danger-text">This removes your wallet from this device. If you set up a passkey, an encrypted backup is kept so you can log back in. Make sure you have your recovery words backed up!</p>
                     <p class="nq-text error-text" id="logout-error" style="display: none; margin-top: 8px;"></p>
                 </div>
             </div>
