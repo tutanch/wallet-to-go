@@ -39,7 +39,8 @@ src/
     receive-view.js         Address + QR code display
     history-view.js         Last 50 TXs via network client
     settings-view.js        Network toggle, WebAuthn, backup, delete wallet
-  styles/app.css
+    batch-send-view.js      Bulk TX: paste/upload addresses, sign once, broadcast
+  styles/app.css            Application styles (includes design tokens)
   lib/qr-encoder.js         Native QR encoder, no dependencies
 keyguard/                   Deployed to SEPARATE ORIGIN (different GitHub Pages domain)
   index.html                Iframe shell with strict CSP (connect-src 'none')
@@ -48,7 +49,6 @@ keyguard/                   Deployed to SEPARATE ORIGIN (different GitHub Pages 
     keyguard-worker.js      Web Worker: all cryptography, key derivation, IndexedDB storage
     styles/keyguard.css
 lib/nimiq-core/             Pre-built Nimiq WASM binaries (crypto, consensus, TX building)
-batch-sender/               Standalone bulk TX tool (not part of wallet, excluded from git)
 scripts/
   deploy.sh                 Cross-origin deploy (pushes keyguard, generates wallet workflow)
   generate-sw.js            Generates sw.js with SHA-256 hashes of all served files
