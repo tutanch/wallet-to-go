@@ -64,20 +64,22 @@ async function createCredential({ userId, userName, prfSalt, excludeCredentialId
         throw new Error('PRF_NOT_SUPPORTED');
     }
 
-    // ALWAYS use get() for the PRF output, even if create() returned one.
-    // The PRF output from create() can differ from get() on some platforms
-    // (different internal computation contexts), which breaks cross-device
-    // deterministic wallet derivation. Using get() here ensures the same
-    // value is produced during creation as during future logins.
-    const prfOutput = await getPrfKey({
-        credentialId: Array.from(new Uint8Array(credential.rawId)),
-        prfSalt,
-    });
+    const credentialId = Array.from(new Uint8Array(credential.rawId));
 
-    return {
-        credentialId: Array.from(new Uint8Array(credential.rawId)),
-        prfKey: prfOutput, // already Array.from() in getPrfKey
-    };
+    // Use the PRF output from create() if available — avoids a second
+    // biometric prompt. Fall back to an explicit get() only when the
+    // platform didn't return a PRF result during registration.
+    const createPrf = extResults.prf?.results?.first;
+    if (createPrf) {
+        return {
+            credentialId,
+            prfKey: Array.from(new Uint8Array(createPrf)),
+        };
+    }
+
+    // Fallback: some older platforms don't return PRF output during create()
+    const prfOutput = await getPrfKey({ credentialId, prfSalt });
+    return { credentialId, prfKey: prfOutput };
 }
 
 async function getPrfKey({ credentialId, prfSalt }) {

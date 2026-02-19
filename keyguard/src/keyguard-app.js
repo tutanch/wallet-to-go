@@ -393,7 +393,20 @@ function nextPasskeyName() {
     return `Nimiq Wallet - ${n}`;
 }
 
-async function createWebAuthnCredential(userId, userName, prfSalt, excludeCredentialIds) {
+// Get existing credential IDs to prevent the platform from silently
+// overwriting credentials during a new create() ceremony.
+async function getExcludeCredentialIds() {
+    try {
+        const info = await callWorker('getWebAuthnInfo');
+        if (info.hasWebAuthn && info.credentialId) {
+            return [Array.from(new Uint8Array(info.credentialId))];
+        }
+    } catch (_) {}
+    return [];
+}
+
+async function createWebAuthnCredential(userId, userName, prfSalt) {
+    const excludeCredentialIds = await getExcludeCredentialIds();
     return await requestWebAuthnFromWallet('create', {
         userId: Array.from(userId),
         userName,
