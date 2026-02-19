@@ -68,21 +68,43 @@ async function getRecord() {
     });
 }
 
+// ── Key material cleanup helpers ──────────────────────────────────
+
+/** Free a WASM-bound object (PrivateKey, PublicKey, Signature, etc.) */
+function freeWasm(obj) {
+    try { if (obj?.free) obj.free(); } catch (_) {}
+}
+
+/** Free an ExtendedPrivateKey's internal WASM key and zero its chain code */
+function freeExtendedKey(extKey) {
+    if (!extKey) return;
+    try { if (extKey._key?.free) extKey._key.free(); } catch (_) {}
+    try { if (extKey._chainCode) extKey._chainCode.fill(0); } catch (_) {}
+}
+
+/** Zero serialized entropy bytes (best-effort; serialize() may return a copy) */
+function zeroEntropy(entropy) {
+    if (!entropy) return;
+    try {
+        const bytes = entropy.serialize();
+        if (bytes instanceof Uint8Array) bytes.fill(0);
+    } catch (_) {}
+}
+
 // ── Key derivation helpers ─────────────────────────────────────────
 
 function deriveAddress(entropy) {
-    const masterKey = entropy.toExtendedPrivateKey();
-    const childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
-    const publicKey = PublicKey.derive(childKey.privateKey);
-    return publicKey.toAddress();
-}
-
-function deriveKeyPair(entropy) {
-    const masterKey = entropy.toExtendedPrivateKey();
-    const childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
-    const privateKey = childKey.privateKey;
-    const publicKey = PublicKey.derive(privateKey);
-    return { privateKey, publicKey };
+    let masterKey, childKey, publicKey;
+    try {
+        masterKey = entropy.toExtendedPrivateKey();
+        childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
+        publicKey = PublicKey.derive(childKey.privateKey);
+        return publicKey.toAddress();
+    } finally {
+        freeExtendedKey(childKey);
+        freeExtendedKey(masterKey);
+        freeWasm(publicKey);
+    }
 }
 
 // ── HKDF helper ─────────────────────────────────────────────────────
@@ -256,7 +278,11 @@ const handlers = {
         // Password encryption (optional)
         if (password) {
             const passwordBuf = new TextEncoder().encode(password);
-            record.secret = new Uint8Array(await Secret.exportEncrypted(pendingEntropy, passwordBuf));
+            try {
+                record.secret = new Uint8Array(await Secret.exportEncrypted(pendingEntropy, passwordBuf));
+            } finally {
+                passwordBuf.fill(0);
+            }
         }
 
         // Passkey encryption (optional)
@@ -275,11 +301,7 @@ const handlers = {
         const request = tx.objectStore(STORE_NAME).put(record);
         await txPromise(request, tx);
 
-        // Zero out pending entropy
-        try {
-            const bytes = pendingEntropy.serialize();
-            if (bytes instanceof Uint8Array) bytes.fill(0);
-        } catch (_) { /* best effort */ }
+        zeroEntropy(pendingEntropy);
         pendingEntropy = null;
 
         return { id };
@@ -292,45 +314,45 @@ const handlers = {
         const wordArray = typeof words === 'string' ? words.trim().split(/\s+/) : words;
         const entropy = MnemonicUtils.mnemonicToEntropy(wordArray);
 
-        const address = deriveAddress(entropy);
-        const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
-
-        const record = {
-            id,
-            defaultAddress: address.serialize(),
-        };
-
-        // Password encryption (optional)
-        if (password) {
-            const passwordBuf = new TextEncoder().encode(password);
-            record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
-        }
-
-        // Passkey encryption (optional)
-        if (prfKey) {
-            const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
-            record.webauthn = {
-                credentialId: new Uint8Array(credentialId),
-                prfSalt: new Uint8Array(prfSalt),
-                encryptedSecret,
-                iv,
-            };
-        }
-
-        const db = await connectDB();
-        const tx = db.transaction([STORE_NAME], 'readwrite');
-        const request = tx.objectStore(STORE_NAME).put(record);
-        await txPromise(request, tx);
-
-        const userAddress = address.toUserFriendlyAddress();
-
-        // Zero entropy
         try {
-            const bytes = entropy.serialize();
-            if (bytes instanceof Uint8Array) bytes.fill(0);
-        } catch (_) { /* best effort */ }
+            const address = deriveAddress(entropy);
+            const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
-        return { address: userAddress };
+            const record = {
+                id,
+                defaultAddress: address.serialize(),
+            };
+
+            // Password encryption (optional)
+            if (password) {
+                const passwordBuf = new TextEncoder().encode(password);
+                try {
+                    record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
+                } finally {
+                    passwordBuf.fill(0);
+                }
+            }
+
+            // Passkey encryption (optional)
+            if (prfKey) {
+                const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
+                record.webauthn = {
+                    credentialId: new Uint8Array(credentialId),
+                    prfSalt: new Uint8Array(prfSalt),
+                    encryptedSecret,
+                    iv,
+                };
+            }
+
+            const db = await connectDB();
+            const tx = db.transaction([STORE_NAME], 'readwrite');
+            const request = tx.objectStore(STORE_NAME).put(record);
+            await txPromise(request, tx);
+
+            return { address: address.toUserFriendlyAddress() };
+        } finally {
+            zeroEntropy(entropy);
+        }
     },
 
     async signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, password, prfKey }) {
@@ -349,6 +371,8 @@ const handlers = {
                 entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
             } catch (_) {
                 throw new Error('Wrong password');
+            } finally {
+                passwordBuf.fill(0);
             }
         }
 
@@ -357,34 +381,35 @@ const handlers = {
         if (msgBytes.length > 64) throw new Error('Message exceeds 64 bytes');
 
         // Build and sign transaction
-        const sender = Address.fromString(senderAddress);
-        const recipient = Address.fromString(recipientAddress);
-        const { privateKey, publicKey } = deriveKeyPair(entropy);
-
-        const tx = TransactionBuilder.newBasicWithData(
-            sender,
-            recipient,
-            msgBytes,
-            BigInt(value),
-            BigInt(fee),
-            validityStartHeight,
-            networkId,
-        );
-
-        const signature = Signature.create(privateKey, publicKey, tx.serializeContent());
-        tx.proof = SignatureProof.singleSig(publicKey, signature).serialize();
-
-        // Serialize the complete signed transaction to bytes
-        const serializedTx = tx.serialize();
-
-        // Zero entropy
+        let masterKey, childKey, privateKey, publicKey, signature;
         try {
-            const bytes = entropy.serialize();
-            if (bytes instanceof Uint8Array) bytes.fill(0);
-        } catch (_) { /* best effort */ }
+            const sender = Address.fromString(senderAddress);
+            const recipient = Address.fromString(recipientAddress);
+            masterKey = entropy.toExtendedPrivateKey();
+            childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
+            privateKey = childKey.privateKey; // same ref as childKey._key
+            publicKey = PublicKey.derive(privateKey);
 
-        // Transfer the buffer (zero-copy) to main thread
-        return { serializedTx };
+            const tx = TransactionBuilder.newBasicWithData(
+                sender, recipient, msgBytes,
+                BigInt(value), BigInt(fee),
+                validityStartHeight, networkId,
+            );
+
+            signature = Signature.create(privateKey, publicKey, tx.serializeContent());
+            tx.proof = SignatureProof.singleSig(publicKey, signature).serialize();
+            const serializedTx = tx.serialize();
+            return { serializedTx };
+        } finally {
+            freeWasm(signature);
+            freeWasm(publicKey);
+            // privateKey === childKey._key (same WASM ref), so free via privateKey
+            // and only zero the chain code on childKey to avoid double-free
+            freeWasm(privateKey);
+            try { if (childKey?._chainCode) childKey._chainCode.fill(0); } catch (_) {}
+            freeExtendedKey(masterKey);
+            zeroEntropy(entropy);
+        }
     },
 
     async exportMnemonic({ password, prfKey }) {
@@ -401,19 +426,17 @@ const handlers = {
                 entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
             } catch (_) {
                 throw new Error('Wrong password');
+            } finally {
+                passwordBuf.fill(0);
             }
         }
 
-        const mnemonic = MnemonicUtils.entropyToMnemonic(entropy);
-        const words = Array.isArray(mnemonic) ? mnemonic : mnemonic.split(' ');
-
-        // Zero entropy
         try {
-            const bytes = entropy.serialize();
-            if (bytes instanceof Uint8Array) bytes.fill(0);
-        } catch (_) { /* best effort */ }
-
-        return { words };
+            const mnemonic = MnemonicUtils.entropyToMnemonic(entropy);
+            return { words: Array.isArray(mnemonic) ? mnemonic : mnemonic.split(' ') };
+        } finally {
+            zeroEntropy(entropy);
+        }
     },
 
     async verifyPassword({ password }) {
@@ -427,6 +450,8 @@ const handlers = {
             return true;
         } catch (_) {
             return false;
+        } finally {
+            passwordBuf.fill(0);
         }
     },
 
@@ -463,31 +488,31 @@ const handlers = {
             entropy = await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
         } catch (_) {
             throw new Error('Wrong password');
+        } finally {
+            passwordBuf.fill(0);
         }
 
-        // Encrypt entropy with PRF-derived key using AES-256-GCM
-        const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
-
-        // Update record with WebAuthn data
-        record.webauthn = {
-            credentialId: new Uint8Array(credentialId),
-            prfSalt: new Uint8Array(prfSalt),
-            encryptedSecret,
-            iv,
-        };
-
-        const db = await connectDB();
-        const tx = db.transaction([STORE_NAME], 'readwrite');
-        const request = tx.objectStore(STORE_NAME).put(record);
-        await txPromise(request, tx);
-
-        // Zero entropy
         try {
-            const bytes = entropy.serialize();
-            if (bytes instanceof Uint8Array) bytes.fill(0);
-        } catch (_) { /* best effort */ }
+            // Encrypt entropy with PRF-derived key using AES-256-GCM
+            const { encryptedSecret, iv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
 
-        return { success: true };
+            // Update record with WebAuthn data
+            record.webauthn = {
+                credentialId: new Uint8Array(credentialId),
+                prfSalt: new Uint8Array(prfSalt),
+                encryptedSecret,
+                iv,
+            };
+
+            const db = await connectDB();
+            const tx = db.transaction([STORE_NAME], 'readwrite');
+            const request = tx.objectStore(STORE_NAME).put(record);
+            await txPromise(request, tx);
+
+            return { success: true };
+        } finally {
+            zeroEntropy(entropy);
+        }
     },
 
     async getWebAuthnInfo() {
@@ -519,6 +544,7 @@ const handlers = {
         await ensureWasm();
 
         let entropy;
+        let derivedBytes;
         let storedCredentialId;
         let storedPrfSalt;
 
@@ -544,56 +570,59 @@ const handlers = {
         } else {
             // Cross-device restore: derive entropy from PRF output via HKDF
             // to avoid using raw authenticator output directly as wallet key material
-            const derivedBytes = await deriveEntropyFromPrf(prfKey);
+            derivedBytes = await deriveEntropyFromPrf(prfKey);
             entropy = new Entropy(derivedBytes);
             storedCredentialId = new Uint8Array(credentialId);
             storedPrfSalt = new Uint8Array(prfSalt);
         }
 
-        const address = deriveAddress(entropy);
-        const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
-
-        const record = {
-            id,
-            defaultAddress: address.serialize(),
-        };
-
-        // Password encryption (optional)
-        if (password) {
-            const passwordBuf = new TextEncoder().encode(password);
-            record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
-        }
-
-        // Encrypt entropy with PRF key for future WebAuthn use
-        const { encryptedSecret, iv: newIv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
-
-        record.webauthn = {
-            credentialId: storedCredentialId,
-            prfSalt: storedPrfSalt,
-            encryptedSecret,
-            iv: newIv,
-        };
-
-        // Clear any existing records first to prevent multi-record ambiguity
-        // (e.g. if a different wallet was stored, getRecord's cursor semantics
-        // would return whichever id sorts first, not necessarily this one)
-        const db = await connectDB();
-        const tx = db.transaction([STORE_NAME], 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.clear();
-        const request = store.put(record);
-        await txPromise(request, tx);
-
-        // Clear backup if it existed
-        await clearPasskeyBackup();
-
-        // Zero entropy
         try {
-            const bytes = entropy.serialize();
-            if (bytes instanceof Uint8Array) bytes.fill(0);
-        } catch (_) { /* best effort */ }
+            const address = deriveAddress(entropy);
+            const id = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
-        return { address: address.toUserFriendlyAddress() };
+            const record = {
+                id,
+                defaultAddress: address.serialize(),
+            };
+
+            // Password encryption (optional)
+            if (password) {
+                const passwordBuf = new TextEncoder().encode(password);
+                try {
+                    record.secret = new Uint8Array(await Secret.exportEncrypted(entropy, passwordBuf));
+                } finally {
+                    passwordBuf.fill(0);
+                }
+            }
+
+            // Encrypt entropy with PRF key for future WebAuthn use
+            const { encryptedSecret, iv: newIv } = await encryptWithPrfKey(entropy.serialize(), prfKey);
+
+            record.webauthn = {
+                credentialId: storedCredentialId,
+                prfSalt: storedPrfSalt,
+                encryptedSecret,
+                iv: newIv,
+            };
+
+            // Clear any existing records first to prevent multi-record ambiguity
+            // (e.g. if a different wallet was stored, getRecord's cursor semantics
+            // would return whichever id sorts first, not necessarily this one)
+            const db = await connectDB();
+            const tx = db.transaction([STORE_NAME], 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            store.clear();
+            const request = store.put(record);
+            await txPromise(request, tx);
+
+            // Clear backup if it existed
+            await clearPasskeyBackup();
+
+            return { address: address.toUserFriendlyAddress() };
+        } finally {
+            zeroEntropy(entropy);
+            if (derivedBytes) derivedBytes.fill(0);
+        }
     },
 
     async removeWebAuthn() {

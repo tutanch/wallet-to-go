@@ -64,6 +64,7 @@ function hideUI() {
 }
 
 function resolveSession(result, transfer = []) {
+    if (!currentSession) return;
     const { source, origin, sessionId } = currentSession;
     currentSession = null;
     document.getElementById('keyguard-ui').style.display = 'none';
@@ -72,6 +73,7 @@ function resolveSession(result, transfer = []) {
 }
 
 function rejectSession(errorMsg) {
+    if (!currentSession) return;
     const { source, origin, sessionId } = currentSession;
     currentSession = null;
     document.getElementById('keyguard-ui').style.display = 'none';

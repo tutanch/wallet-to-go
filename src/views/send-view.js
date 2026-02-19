@@ -114,7 +114,7 @@ export async function sendView() {
         sending = true;
 
         try {
-            const feeValue = parseInt(el.querySelector('#fee').value) || 0;
+            const feeValue = Math.max(0, parseInt(el.querySelector('#fee').value) || 0);
             const messageValue = el.querySelector('#message').value;
             const validityStartHeight = await network.getHeadHeight();
             const networkId = await network.getNetworkId();
