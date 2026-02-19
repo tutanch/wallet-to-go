@@ -41,14 +41,6 @@ export async function historyView() {
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 
-    // Show skeleton placeholders while loading
-    const txList = el.querySelector('#tx-list');
-    for (let i = 0; i < 5; i++) {
-        const skel = document.createElement('div');
-        skel.className = 'skeleton skeleton-tx';
-        txList.appendChild(skel);
-    }
-
     // Fetch transactions
     try {
         const txs = await network.getHistory(address, 50);

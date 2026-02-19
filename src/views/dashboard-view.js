@@ -306,13 +306,7 @@ export async function dashboardView() {
         $consensus.className = `consensus-indicator ${consensusClass}`;
         $consensus.textContent = consensusText;
 
-        if (cache.balance !== null) {
-            $balance.textContent = formatNim(cache.balance);
-            $balance.classList.remove('skeleton', 'skeleton-balance');
-        } else {
-            $balance.textContent = '\u00A0';
-            $balance.classList.add('skeleton', 'skeleton-balance');
-        }
+        $balance.textContent = cache.balance !== null ? formatNim(cache.balance) : '...';
 
         if (cache.headHeight) {
             $blockHeight.textContent = `Block #${cache.headHeight.toLocaleString()}`;
@@ -328,11 +322,10 @@ export async function dashboardView() {
             });
             $btnAllTxs.style.display = '';
         } else if (cache.consensus !== 'established') {
-            for (let i = 0; i < 3; i++) {
-                const skel = document.createElement('div');
-                skel.className = 'skeleton skeleton-tx';
-                $txList.appendChild(skel);
-            }
+            const placeholder = document.createElement('p');
+            placeholder.className = 'nq-text no-txs';
+            placeholder.textContent = 'Waiting for consensus...';
+            $txList.appendChild(placeholder);
             $btnAllTxs.style.display = 'none';
         } else {
             const placeholder = document.createElement('p');

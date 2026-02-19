@@ -322,6 +322,12 @@ body {
     border-top: 1px solid var(--color-border);
 }
 
+.nq-card-footer .nq-button {
+    width: auto;
+    max-width: none;
+    margin: 0;
+}
+
 /* ---- Input overrides (CRITICAL: fix invisible inputs) ---- */
 /* Scoped under .nq-card to beat .nq-blue-bg .nq-input specificity */
 .nq-card .nq-input {
@@ -1267,40 +1273,6 @@ body {
     background: var(--color-error-bg);
     color: var(--color-error);
     border: 1px solid var(--color-error);
-}
-
-/* ---- Loading skeletons ---- */
-.skeleton {
-    background: var(--color-bg-muted);
-    border-radius: 4px;
-    position: relative;
-    overflow: hidden;
-}
-
-.skeleton::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-    animation: shimmer 1.5s infinite;
-}
-
-@keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-
-.skeleton-balance {
-    height: 44px;
-    width: 140px;
-    margin: 0 auto;
-    border-radius: 8px;
-}
-
-.skeleton-tx {
-    height: 56px;
-    border-radius: 10px;
-    margin-bottom: 2px;
 }
 
 /* ---- Micro-interactions ---- */
