@@ -388,9 +388,10 @@ function generatePrfSalt() {
 }
 
 function nextPasskeyName() {
-    const n = parseInt(localStorage.getItem('nimiq-pk-idx') || '0', 10) + 1;
-    localStorage.setItem('nimiq-pk-idx', String(n));
-    return `Nimiq Wallet - ${n}`;
+    const now = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    return `Nimiq Wallet (${stamp})`;
 }
 
 // Get existing credential IDs to prevent the platform from silently
