@@ -27,7 +27,7 @@ export async function batchSendView() {
                 <div class="form-group">
                     <label class="nq-label">Recipient Addresses</label>
                     <textarea class="nq-input" id="recipients" rows="6"
-                        placeholder="One address per line&#10;NQ52 2CNA U8HC N61T HA9G 1X44 79Q0 VBCE LK14&#10;NQ07 ...</textarea>
+                        placeholder="One address per line&#10;NQ52 2CNA U8HC N61T HA9G 1X44 79Q0 VBCE LK14&#10;NQ07 ..."></textarea>
                     <div class="file-upload-wrapper">
                         <label class="file-upload-label" for="file-upload">Upload CSV / TXT</label>
                         <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
