@@ -514,49 +514,6 @@ function renderUnlockChoice(title, subtitle) {
         </div>`;
 }
 
-// ── WebAuthn registration flow ────────────────────────────────────────────
-
-async function offerWebAuthnRegistration(password, addressString) {
-    return new Promise((resolve) => {
-        setUI(renderWebAuthnPrompt());
-
-        ui.querySelector('#btn-skip').onclick = () => resolve();
-
-        ui.querySelector('#btn-enable').onclick = async () => {
-            const btn = ui.querySelector('#btn-enable');
-            const errorEl = ui.querySelector('#error');
-            setButtonState(btn, 'Registering...', true);
-
-            try {
-                const prfSalt = generatePrfSalt();
-                const userId = crypto.getRandomValues(new Uint8Array(32));
-                const { credentialId, prfKey } = await createWebAuthnCredential(
-                    userId, addressString, prfSalt,
-                );
-
-                await callWorker('saveWebAuthnSecret', {
-                    password,
-                    prfKey: Array.from(prfKey),
-                    credentialId: Array.from(credentialId),
-                    prfSalt: Array.from(prfSalt),
-                });
-
-                prfKey.fill(0);
-                resolve();
-            } catch (err) {
-                if (err.message === 'PRF_NOT_SUPPORTED') {
-                    showError(errorEl, 'Your device does not support this feature.');
-                } else if (err.name === 'NotAllowedError') {
-                    showError(errorEl, 'Registration was cancelled or timed out.');
-                } else {
-                    showError(errorEl, 'Could not set up biometric unlock.');
-                }
-                setButtonState(btn, 'Try Again', false);
-            }
-        };
-    });
-}
-
 // ── UI flows ──────────────────────────────────────────────────────────────
 
 const ui = document.getElementById('keyguard-ui');
@@ -578,139 +535,71 @@ function bumpAccountIndex() {
 async function flowCreateWallet() {
     showUI();
 
-    const prfSupported = await isPrfSupported();
+    // Passkey is mandatory — wallet entropy is derived deterministically from
+    // HKDF(PRF_output, account_index). Each index produces a unique
+    // wallet, and scanning indices on another device restores them all.
+    setUI(renderWebAuthnPrompt());
 
-    if (prfSupported) {
-        // Offer passkey — wallet entropy is derived deterministically from
-        // HKDF(PRF_output, account_index). Each index produces a unique
-        // wallet, and scanning indices on another device restores them all.
-        setUI(renderWebAuthnPrompt());
+    // No skip/fallback — cancel is the only alternative
+    ui.querySelector('#btn-skip').textContent = 'Cancel';
+    ui.querySelector('#btn-skip').onclick = () => rejectSession('User cancelled');
 
-        ui.querySelector('#btn-skip').onclick = () => {
-            setUI('');
-            flowCreateWalletRandom();
-        };
-
-        ui.querySelector('#btn-enable').onclick = async () => {
-            const btn = ui.querySelector('#btn-enable');
-            const errorEl = ui.querySelector('#error');
-            setButtonState(btn, 'Registering...', true);
-
-            try {
-                const accountIndex = getNextAccountIndex();
-                // user.id MUST be random — it controls credential deduplication
-                // on the platform. If deterministic, a new browser session would
-                // overwrite the old passkey (same RP + same user.id = replace).
-                // The account index for wallet derivation is passed separately
-                // to createWalletFromPrf.
-                const userId = crypto.getRandomValues(new Uint8Array(32));
-                const { credentialId, prfKey } = await createWebAuthnCredential(
-                    userId, nextPasskeyName(), RESTORE_PRF_SALT,
-                );
-
-                // Derive wallet deterministically from PRF output + account index
-                const walletData = await callWorker('createWalletFromPrf', {
-                    prfKey: Array.from(prfKey),
-                    accountIndex,
-                });
-
-                // Show mnemonic (derived from passkey — same on any device)
-                setUI(renderMnemonicGrid(walletData.mnemonic, {
-                    title: 'Your Recovery Words',
-                    subtitle: 'Write these 24 words down and store them safely. They are the only way to recover your wallet if you lose your passkey.',
-                    confirmText: "I've saved my words",
-                }));
-
-                ui.querySelector('#btn-cancel').onclick = () => {
-                    prfKey.fill(0);
-                    rejectSession('User cancelled');
-                };
-                ui.querySelector('#btn-confirm').onclick = async () => {
-                    setUI('');
-                    await callWorker('saveWallet', {
-                        prfKey: Array.from(prfKey),
-                        credentialId: Array.from(credentialId),
-                        prfSalt: Array.from(RESTORE_PRF_SALT),
-                    });
-                    prfKey.fill(0);
-                    bumpAccountIndex();
-                    resolveSession({ address: walletData.address });
-                };
-            } catch (err) {
-                if (err.message === 'PRF_NOT_SUPPORTED') {
-                    showError(errorEl, 'Your device does not support this feature.');
-                } else if (err.name === 'NotAllowedError') {
-                    showError(errorEl, 'Registration was cancelled or timed out.');
-                } else {
-                    showError(errorEl, 'Could not set up biometric unlock.');
-                }
-                setButtonState(btn, 'Try Again', false);
-            }
-        };
-    } else {
-        // No PRF support → random entropy + password
-        flowCreateWalletRandom();
-    }
-}
-
-async function flowCreateWalletRandom() {
-    let walletData;
-    try {
-        walletData = await callWorker('createWallet');
-    } catch (e) {
-        return rejectSession(e.message);
-    }
-
-    setUI(renderMnemonicGrid(walletData.mnemonic, {
-        title: 'Your Recovery Words',
-        subtitle: 'Write these 24 words down and store them safely. They are the only way to recover your wallet.',
-        confirmText: "I've saved my words",
-    }));
-
-    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-confirm').onclick = () => {
-        setUI('');
-        showCreatePasswordForm(walletData);
-    };
-}
-
-function showCreatePasswordForm(walletData) {
-    setUI(renderPasswordForm({
-        title: 'Set a Password',
-        subtitle: 'This password encrypts your wallet on this device.',
-        isNew: true,
-    }));
-
-    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pw = ui.querySelector('#password').value;
-        const confirm = ui.querySelector('#password-confirm').value;
+    ui.querySelector('#btn-enable').onclick = async () => {
+        const btn = ui.querySelector('#btn-enable');
         const errorEl = ui.querySelector('#error');
+        setButtonState(btn, 'Registering...', true);
 
-        if (pw.length < 8) { showError(errorEl, 'Password must be at least 8 characters.'); return; }
-        if (pw !== confirm) { showError(errorEl, 'Passwords do not match.'); return; }
-
-        const btn = ui.querySelector('#btn-submit');
-        setButtonState(btn, 'Saving...', true);
         try {
-            await callWorker('saveWallet', { password: pw });
-            ui.querySelector('#password').value = '';
-            ui.querySelector('#password-confirm').value = '';
+            const accountIndex = getNextAccountIndex();
+            // user.id MUST be random — it controls credential deduplication
+            // on the platform. If deterministic, a new browser session would
+            // overwrite the old passkey (same RP + same user.id = replace).
+            // The account index for wallet derivation is passed separately
+            // to createWalletFromPrf.
+            const userId = crypto.getRandomValues(new Uint8Array(32));
+            const { credentialId, prfKey } = await createWebAuthnCredential(
+                userId, nextPasskeyName(), RESTORE_PRF_SALT,
+            );
 
-            // Offer WebAuthn registration if supported
-            if (await isPrfSupported()) {
-                await offerWebAuthnRegistration(pw, walletData.address);
-            }
+            // Derive wallet deterministically from PRF output + account index
+            const walletData = await callWorker('createWalletFromPrf', {
+                prfKey: Array.from(prfKey),
+                accountIndex,
+            });
 
-            resolveSession({ address: walletData.address });
+            // Show mnemonic (derived from passkey — same on any device)
+            setUI(renderMnemonicGrid(walletData.mnemonic, {
+                title: 'Your Recovery Words',
+                subtitle: 'Write these 24 words down and store them safely. They are the only way to recover your wallet if you lose your passkey.',
+                confirmText: "I've saved my words",
+            }));
+
+            ui.querySelector('#btn-cancel').onclick = () => {
+                prfKey.fill(0);
+                rejectSession('User cancelled');
+            };
+            ui.querySelector('#btn-confirm').onclick = async () => {
+                setUI('');
+                await callWorker('saveWallet', {
+                    prfKey: Array.from(prfKey),
+                    credentialId: Array.from(credentialId),
+                    prfSalt: Array.from(RESTORE_PRF_SALT),
+                });
+                prfKey.fill(0);
+                bumpAccountIndex();
+                resolveSession({ address: walletData.address });
+            };
         } catch (err) {
-            ui.querySelector('#password').value = '';
-            ui.querySelector('#password-confirm').value = '';
-            setButtonState(btn, 'Confirm', false);
-            showError(ui.querySelector('#error'), 'Failed to save wallet. Please try again.');
+            if (err.message === 'PRF_NOT_SUPPORTED') {
+                showError(errorEl, 'Your device does not support this feature.');
+            } else if (err.name === 'NotAllowedError') {
+                showError(errorEl, 'Registration was cancelled or timed out.');
+            } else {
+                showError(errorEl, 'Could not set up biometric unlock.');
+            }
+            setButtonState(btn, 'Try Again', false);
         }
-    });
+    };
 }
 
 async function flowImportWallet() {
@@ -730,100 +619,50 @@ async function flowImportWallet() {
         const wordsCopy = words.slice();
         setUI('');
 
-        const prfSupported = await isPrfSupported();
+        // Passkey is mandatory for import
+        setUI(renderWebAuthnPrompt());
 
-        if (prfSupported) {
-            // Step 2a: Offer passkey first (password is optional)
-            setUI(renderWebAuthnPrompt());
+        // No skip/fallback — cancel is the only alternative
+        ui.querySelector('#btn-skip').textContent = 'Cancel';
+        ui.querySelector('#btn-skip').onclick = () => {
+            wordsCopy.fill('');
+            rejectSession('User cancelled');
+        };
 
-            ui.querySelector('#btn-skip').onclick = () => {
-                // User skipped passkey → fall through to password
-                setUI('');
-                showImportPasswordForm(wordsCopy);
-            };
+        ui.querySelector('#btn-enable').onclick = async () => {
+            const btn = ui.querySelector('#btn-enable');
+            const errorEl2 = ui.querySelector('#error');
+            setButtonState(btn, 'Registering...', true);
 
-            ui.querySelector('#btn-enable').onclick = async () => {
-                const btn = ui.querySelector('#btn-enable');
-                const errorEl2 = ui.querySelector('#error');
-                setButtonState(btn, 'Registering...', true);
+            try {
+                const prfSalt = generatePrfSalt();
+                const userId = crypto.getRandomValues(new Uint8Array(32));
+                const { credentialId, prfKey } = await createWebAuthnCredential(
+                    userId, nextPasskeyName(), prfSalt,
+                );
 
-                try {
-                    const prfSalt = generatePrfSalt();
-                    const userId = crypto.getRandomValues(new Uint8Array(32));
-                    const { credentialId, prfKey } = await createWebAuthnCredential(
-                        userId, nextPasskeyName(), prfSalt,
-                    );
+                // Import wallet with passkey only (no password)
+                const result = await callWorker('importWallet', {
+                    words: wordsCopy,
+                    prfKey: Array.from(prfKey),
+                    credentialId: Array.from(credentialId),
+                    prfSalt: Array.from(prfSalt),
+                });
 
-                    // Import wallet with passkey only (no password)
-                    const result = await callWorker('importWallet', {
-                        words: wordsCopy,
-                        prfKey: Array.from(prfKey),
-                        credentialId: Array.from(credentialId),
-                        prfSalt: Array.from(prfSalt),
-                    });
-
-                    prfKey.fill(0);
-                    wordsCopy.fill('');
-                    resolveSession({ address: result.address });
-                } catch (err) {
-                    if (err.message === 'PRF_NOT_SUPPORTED') {
-                        showError(errorEl2, 'Your device does not support this feature.');
-                    } else if (err.name === 'NotAllowedError') {
-                        showError(errorEl2, 'Registration was cancelled or timed out.');
-                    } else {
-                        showError(errorEl2, 'Could not set up biometric unlock.');
-                    }
-                    setButtonState(btn, 'Try Again', false);
+                prfKey.fill(0);
+                wordsCopy.fill('');
+                resolveSession({ address: result.address });
+            } catch (err) {
+                if (err.message === 'PRF_NOT_SUPPORTED') {
+                    showError(errorEl2, 'Your device does not support this feature.');
+                } else if (err.name === 'NotAllowedError') {
+                    showError(errorEl2, 'Registration was cancelled or timed out.');
+                } else {
+                    showError(errorEl2, 'Could not set up biometric unlock.');
                 }
-            };
-        } else {
-            // Step 2b: No PRF support → password required
-            showImportPasswordForm(wordsCopy);
-        }
-    });
-}
-
-function showImportPasswordForm(wordsCopy) {
-    setUI(renderPasswordForm({
-        title: 'Set a Password',
-        subtitle: 'This password encrypts your imported wallet.',
-        isNew: true,
-    }));
-
-    ui.querySelector('#btn-cancel').onclick = () => {
-        wordsCopy.fill('');
-        rejectSession('User cancelled');
-    };
-    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pw = ui.querySelector('#password').value;
-        const confirm = ui.querySelector('#password-confirm').value;
-        const errorEl = ui.querySelector('#error');
-
-        if (pw.length < 8) { showError(errorEl, 'Password must be at least 8 characters.'); return; }
-        if (pw !== confirm) { showError(errorEl, 'Passwords do not match.'); return; }
-
-        const btn = ui.querySelector('#btn-submit');
-        setButtonState(btn, 'Importing...', true);
-        try {
-            const result = await callWorker('importWallet', { words: wordsCopy, password: pw });
-            ui.querySelector('#password').value = '';
-            ui.querySelector('#password-confirm').value = '';
-            wordsCopy.fill('');
-
-            // Offer WebAuthn registration if supported
-            if (await isPrfSupported()) {
-                await offerWebAuthnRegistration(pw, result.address);
+                setButtonState(btn, 'Try Again', false);
             }
-
-            resolveSession({ address: result.address });
-        } catch (err) {
-            ui.querySelector('#password').value = '';
-            ui.querySelector('#password-confirm').value = '';
-            wordsCopy.fill('');
-            setButtonState(btn, 'Confirm', false);
-            showError(ui.querySelector('#error'), 'Invalid recovery words or wrong password.');
-        }
+        };
     });
 }
 
@@ -1337,11 +1176,10 @@ async function flowRegisterWebAuthn() {
             setButtonState(btn2, 'Registering...', true);
 
             try {
-                const address = await callWorker('getStoredAddress');
                 const prfSalt = generatePrfSalt();
                 const userId = crypto.getRandomValues(new Uint8Array(32));
                 const { credentialId, prfKey } = await createWebAuthnCredential(
-                    userId, address || 'Nimiq Wallet', prfSalt,
+                    userId, nextPasskeyName(), prfSalt,
                 );
 
                 await callWorker('saveWebAuthnSecret', {
