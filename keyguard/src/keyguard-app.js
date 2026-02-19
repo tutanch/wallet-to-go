@@ -910,6 +910,9 @@ async function flowCreateWallet() {
                 userId, nextPasskeyName(), RESTORE_PRF_SALT,
             );
 
+            // Clear the passkey registration screen before async worker call
+            setUI('');
+
             // Derive wallet deterministically from PRF output + account index
             const walletData = await callWorker('createWalletFromPrf', {
                 prfKey: Array.from(prfKey),
@@ -969,6 +972,9 @@ async function flowImportWallet() {
                 const { credentialId, prfKey } = await createWebAuthnCredential(
                     userId, nextPasskeyName(), prfSalt,
                 );
+
+                // Clear the passkey registration screen before async worker call
+                setUI('');
 
                 // Import wallet with passkey only (no password)
                 const result = await callWorker('importWallet', {

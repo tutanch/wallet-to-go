@@ -3,10 +3,6 @@
 //
 // The keyguard sends { type: 'webauthn-request', action, ... } via postMessage
 // and this module responds with { type: 'webauthn-response', result | error }.
-//
-// WebAuthn APIs require transient user activation (a click) in the calling
-// window. Since the keyguard's click doesn't transfer via postMessage, we show
-// a brief overlay prompt so the user clicks within the wallet origin context.
 
 const KEYGUARD_ORIGIN = '[KEYGUARD_ORIGIN]';
 const WEBAUTHN_RP = { name: 'Nimiq Wallet' };
@@ -120,64 +116,6 @@ async function getDiscoverablePrfKey(prfSalt) {
     };
 }
 
-// ── User gesture prompt ───────────────────────────────────────────────────
-// WebAuthn requires transient user activation. The keyguard iframe's click
-// doesn't count in the wallet's browsing context, so we show a brief overlay
-// that the user clicks to provide the gesture.
-
-function showGesturePrompt(isCreate) {
-    return new Promise((resolve, reject) => {
-        const overlay = document.createElement('div');
-        overlay.id = 'webauthn-gesture-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:var(--color-overlay);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:fadeIn .15s ease-out;';
-
-        const card = document.createElement('div');
-        card.style.cssText = 'background:var(--color-bg);border-radius:12px;padding:28px 24px;max-width:360px;width:90%;text-align:center;box-shadow:var(--shadow-dropdown);';
-
-        const title = document.createElement('h2');
-        title.style.cssText = 'font-size:18px;font-weight:700;color:var(--color-text);margin-bottom:8px;';
-        title.textContent = isCreate ? 'Register Passkey' : 'Authenticate';
-
-        const desc = document.createElement('p');
-        desc.style.cssText = 'font-size:14px;color:var(--color-text-secondary);margin-bottom:20px;line-height:1.4;';
-        desc.textContent = isCreate
-            ? 'Click the button below, then follow your browser\'s prompt to register your biometric or passkey.'
-            : 'Click the button below, then use your fingerprint, face, or device PIN to authenticate.';
-
-        const btn = document.createElement('button');
-        btn.style.cssText = 'padding:12px 32px;background:var(--nimiq-light-blue);color:white;border:none;border-radius:500px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,130,202,0.3);min-height:44px;';
-        btn.textContent = 'Continue';
-
-        const cancelBtn = document.createElement('button');
-        cancelBtn.style.cssText = 'padding:8px 16px;background:var(--color-bg-muted);color:var(--color-text);border:1px solid var(--color-border-strong);border-radius:500px;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px;min-height:36px;';
-        cancelBtn.textContent = 'Cancel';
-
-        card.appendChild(title);
-        card.appendChild(desc);
-        card.appendChild(btn);
-        card.appendChild(document.createElement('br'));
-        card.appendChild(cancelBtn);
-        overlay.appendChild(card);
-        document.body.appendChild(overlay);
-
-        function cleanup() {
-            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-        }
-
-        btn.addEventListener('click', () => {
-            cleanup();
-            resolve();
-        });
-
-        cancelBtn.addEventListener('click', () => {
-            cleanup();
-            const err = new Error('User cancelled');
-            err.name = 'NotAllowedError';
-            reject(err);
-        });
-    });
-}
-
 // ── Delegation listener ───────────────────────────────────────────────────
 
 function getFrame() {
@@ -227,40 +165,17 @@ window.addEventListener('message', async (event) => {
                 result = await isPrfSupported();
                 break;
             case 'create': {
-                // Hide keyguard iframe so gesture prompt is visible
-                // (iframes can composite above DOM overlays despite z-index)
-                const frame = getFrame();
-                if (frame) frame.style.display = 'none';
-                try {
-                    await showGesturePrompt(true);
-                    result = await createCredential(event.data);
-                } finally {
-                    if (frame) frame.style.display = '';
-                }
+                result = await createCredential(event.data);
                 break;
             }
             case 'get': {
-                const frame = getFrame();
-                if (frame) frame.style.display = 'none';
-                try {
-                    await showGesturePrompt(false);
-                    result = await getPrfKey(event.data);
-                } finally {
-                    if (frame) frame.style.display = '';
-                }
+                result = await getPrfKey(event.data);
                 break;
             }
             case 'getForRestore': {
                 // Discoverable credential with PRF — for passkey login.
                 // No allowCredentials so the browser shows the passkey picker.
-                const frame = getFrame();
-                if (frame) frame.style.display = 'none';
-                try {
-                    await showGesturePrompt(false);
-                    result = await getDiscoverablePrfKey(event.data.prfSalt);
-                } finally {
-                    if (frame) frame.style.display = '';
-                }
+                result = await getDiscoverablePrfKey(event.data.prfSalt);
                 break;
             }
             default:
