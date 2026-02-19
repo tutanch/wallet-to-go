@@ -618,11 +618,10 @@ body {
 
 .address-text {
     font-family: 'Fira Mono', monospace;
-    font-size: 12px;
+    font-size: 9px;
     word-spacing: -0.15em;
-    word-break: break-all;
     color: var(--color-text-secondary);
-    line-height: 1.5;
+    line-height: 1.4;
 }
 
 .address-text-large {
@@ -646,16 +645,6 @@ body {
 .address-row .address-display {
     flex: 1;
     min-width: 0;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.address-idx {
-    font-size: 11px;
-    color: var(--color-text-faint);
-    font-weight: 600;
-    text-align: center;
-    margin-top: 2px;
 }
 
 /* Picker trigger button */

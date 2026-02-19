@@ -139,7 +139,6 @@ export async function dashboardView() {
                 <div class="address-row">
                     <div class="address-display" id="address-copy" title="Click to copy">
                         <span class="address-text" id="d-address"></span>
-                        ${hasMultiple ? '<span class="address-idx" id="d-addr-idx"></span>' : ''}
                     </div>
                     ${hasMultiple ? '<button class="addr-picker-btn" id="btn-addr-picker" title="Switch address">&#9662;</button>' : ''}
                 </div>
@@ -171,7 +170,6 @@ export async function dashboardView() {
     const $balance = el.querySelector('#d-balance');
     const $blockHeight = el.querySelector('#d-block-height');
     const $address = el.querySelector('#d-address');
-    const $addrIdx = el.querySelector('#d-addr-idx');
     const $txList = el.querySelector('#d-tx-list');
     const $btnAllTxs = el.querySelector('#btn-all-txs');
     const $picker = el.querySelector('#addr-picker');
@@ -179,7 +177,6 @@ export async function dashboardView() {
 
     function renderAddress() {
         $address.textContent = currentAddress;
-        if ($addrIdx) $addrIdx.textContent = `${activeIdx + 1} / ${allAddresses.length}`;
     }
     renderAddress();
 
