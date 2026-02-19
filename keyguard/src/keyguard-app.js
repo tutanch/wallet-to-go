@@ -1356,6 +1356,7 @@ function renderAccountPicker(addresses) {
                 </div>
                 <div class="keyguard-footer">
                     <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                    <p class="error-text" id="error" style="display:none;"></p>
                 </div>
             </div>
         </div>`;
@@ -1439,8 +1440,15 @@ async function flowRestoreWithPasskey(args) {
                 resolveSession({ address: result.address });
             } catch (err) {
                 if (prfKey.fill) prfKey.fill(0);
-                showError(errorEl || ui.querySelector('#error') || document.createElement('p'),
-                    'Restoration failed: ' + err.message);
+                const pickerError = ui.querySelector('#error');
+                if (pickerError) {
+                    showError(pickerError, 'Restoration failed: ' + err.message);
+                    // Re-enable buttons so user can try again
+                    ui.querySelectorAll('.account-row').forEach(r => {
+                        r.disabled = false;
+                        r.style.opacity = '';
+                    });
+                }
             }
         }
 

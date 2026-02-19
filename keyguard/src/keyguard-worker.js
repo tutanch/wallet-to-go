@@ -254,7 +254,9 @@ const handlers = {
         await ensureWasm();
         const nonce = buildIndexNonce(accountIndex);
         const derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
-        const entropy = new Entropy(derivedBytes);
+        // Entropy stores the buffer by reference — copy it so we can zero
+        // derivedBytes without destroying the entropy we need for mnemonic/address.
+        const entropy = new Entropy(new Uint8Array(derivedBytes));
         derivedBytes.fill(0);
         const mnemonic = MnemonicUtils.entropyToMnemonic(entropy);
         const address = deriveAddress(entropy);
@@ -592,11 +594,11 @@ const handlers = {
         for (let i = 0; i <= maxIndex; i++) {
             const nonce = buildIndexNonce(i);
             const derived = await deriveEntropyFromPrf(prfKey, nonce);
-            const entropy = new Entropy(derived);
+            const entropy = new Entropy(new Uint8Array(derived));
+            derived.fill(0);
             const addr = deriveAddress(entropy);
             addresses.push({ index: i, address: addr.toUserFriendlyAddress() });
             zeroEntropy(entropy);
-            derived.fill(0);
         }
         return { addresses };
     },
@@ -606,7 +608,8 @@ const handlers = {
 
         const nonce = buildIndexNonce(accountIndex);
         const derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
-        const entropy = new Entropy(derivedBytes);
+        const entropy = new Entropy(new Uint8Array(derivedBytes));
+        derivedBytes.fill(0);
 
         try {
             const address = deriveAddress(entropy);
@@ -645,7 +648,6 @@ const handlers = {
             return { address: address.toUserFriendlyAddress() };
         } finally {
             zeroEntropy(entropy);
-            derivedBytes.fill(0);
         }
     },
 
