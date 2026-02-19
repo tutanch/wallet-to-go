@@ -88,6 +88,13 @@ window.addEventListener('message', (event) => {
         return;
     }
 
+    // Balance request from keyguard — it has no network access, so we fetch balances here.
+    if (type === 'balance-request') {
+        const { requestId: balReqId, addresses } = event.data;
+        handleBalanceRequest(balReqId, addresses, event.source);
+        return;
+    }
+
     if (type === 'result' || type === 'error') {
         const p = pending.get(sid);
         if (!p) return;
@@ -100,13 +107,35 @@ window.addEventListener('message', (event) => {
     }
 });
 
+async function handleBalanceRequest(requestId, addresses, source) {
+    const balances = {};
+    try {
+        // Dynamic import to avoid circular dependency — network-client isn't
+        // always connected when keyguard-api loads.
+        const { getClient, isConsensusEstablished } = await import('./network-client.js');
+        const hasConsensus = await isConsensusEstablished();
+        if (hasConsensus && addresses?.length) {
+            const client = await getClient();
+            const accounts = await client.getAccounts(addresses);
+            for (let i = 0; i < addresses.length; i++) {
+                balances[addresses[i]] = accounts[i] ? Number(accounts[i].balance) : 0;
+            }
+        }
+    } catch (_) {
+        // Network not ready — return empty balances (non-fatal)
+    }
+    try {
+        source.postMessage({ type: 'balance-response', requestId, balances }, KEYGUARD_ORIGIN);
+    } catch (_) {}
+}
+
 // ── Core send function ─────────────────────────────────────────────────────
 
 // Commands that show keyguard UI — iframe must be visible for user interaction.
 const UI_COMMANDS = new Set([
     'createWallet', 'importWallet', 'signTransaction', 'signBatchTransaction',
     'exportMnemonic', 'deleteWallet', 'unlock', 'restoreWithPasskey',
-    'registerWebAuthn', 'removeWebAuthn',
+    'registerWebAuthn', 'removeWebAuthn', 'switchAccount',
 ]);
 
 function call(command, args, timeoutMs = 120000) {
@@ -264,4 +293,14 @@ export function registerWebAuthn() {
  */
 export function removeWebAuthn() {
     return call('removeWebAuthn');
+}
+
+/**
+ * Switch active account. Keyguard shows passkey auth + account picker with balances.
+ * Returns { address }.
+ */
+export async function switchAccount() {
+    const result = await call('switchAccount');
+    if (result?.address) cachedAddress = result.address;
+    return result;
 }

@@ -30,10 +30,23 @@ const ACTIVE_RECORD_ID = 'wallet';
 let dbPromise = null;
 
 function connectDB() {
-    if (dbPromise) return dbPromise;
+    if (dbPromise) {
+        // Verify the cached connection is still usable. If the database was
+        // closed (e.g. by deleteWallet) or the browser evicted it, the cached
+        // promise resolves to a dead IDBDatabase that throws on transaction().
+        return dbPromise.then(db => {
+            try {
+                db.transaction([STORE_NAME], 'readonly');
+                return db;
+            } catch (_) {
+                dbPromise = null;
+                return connectDB();
+            }
+        });
+    }
     dbPromise = new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onerror = () => reject(request.error);
+        request.onerror = () => { dbPromise = null; reject(request.error); };
         request.onsuccess = () => resolve(request.result);
         request.onupgradeneeded = () => {
             request.result.createObjectStore(STORE_NAME, { keyPath: 'id' });

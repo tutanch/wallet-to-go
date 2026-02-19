@@ -411,6 +411,39 @@ async function getWebAuthnPrfKey(credentialId, prfSalt) {
     // Returns number[] (PRF key bytes)
 }
 
+// ── Balance lookup delegation ─────────────────────────────────────────────
+// The keyguard has no network access (connect-src 'none'), so it asks the
+// wallet to look up balances via the same postMessage channel.
+
+let balanceReqId = 0;
+
+function requestBalancesFromWallet(addresses) {
+    return new Promise((resolve, reject) => {
+        if (!currentSession || !currentSession.source) {
+            resolve({}); // no session → return empty
+            return;
+        }
+        const expectedSource = currentSession.source;
+        const requestId = `bal-${++balanceReqId}`;
+        const timer = setTimeout(() => {
+            window.removeEventListener('message', onMessage);
+            resolve({}); // timeout → return empty (non-fatal)
+        }, 15000);
+
+        function onMessage(event) {
+            if (!isTrustedWalletEvent(event)) return;
+            if (event.source !== expectedSource) return;
+            if (event.data?.type !== 'balance-response') return;
+            if (event.data?.requestId !== requestId) return;
+            clearTimeout(timer);
+            window.removeEventListener('message', onMessage);
+            resolve(event.data.balances || {});
+        }
+        window.addEventListener('message', onMessage);
+        sendToWallet({ type: 'balance-request', requestId, addresses });
+    });
+}
+
 // ── WebAuthn UI templates ─────────────────────────────────────────────────
 
 function renderWebAuthnPrompt() {
@@ -1338,18 +1371,25 @@ const RESTORE_PRF_SALT = new Uint8Array([
     45,118,49,0,0,0,0,0,0,0,0,0,0,0,0,0,
 ]); // "nimiq-wallet-prf-v1" padded to 32 bytes
 
-function renderAccountPicker(addresses) {
-    const rows = addresses.map(({ index, address }) => `
+function renderAccountPicker(addresses, balances = {}) {
+    const rows = addresses.map(({ index, address }) => {
+        const bal = balances[address];
+        const balText = bal !== undefined ? formatLuna(bal) : '';
+        return `
         <button type="button" class="account-row" data-index="${index}">
             <span class="account-index">#${index + 1}</span>
-            <span class="account-address">${escHtml(address)}</span>
-        </button>`).join('');
+            <span class="account-details">
+                <span class="account-address">${escHtml(address)}</span>
+                ${balText ? `<span class="account-balance">${escHtml(balText)}</span>` : ''}
+            </span>
+        </button>`;
+    }).join('');
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
                 <div class="keyguard-header">
                     <h1>Select Wallet</h1>
-                    <p>Choose which wallet to restore.</p>
+                    <p>Choose which wallet to activate.</p>
                 </div>
                 <div class="keyguard-body" style="max-height:340px;overflow-y:auto;">
                     <div class="account-list">${rows}</div>
@@ -1360,6 +1400,74 @@ function renderAccountPicker(addresses) {
                 </div>
             </div>
         </div>`;
+}
+
+// Shared helper: scan accounts, fetch balances, show picker, restore selected.
+// Used by both restoreWithPasskey and switchAccount flows.
+async function showAccountPickerFlow({ prfKey, credentialId, allowOverwrite, errorEl }) {
+    let addresses;
+    try {
+        const scan = await callWorker('scanAccountAddresses', {
+            prfKey: Array.from(prfKey),
+            maxIndex: 9,
+        });
+        addresses = scan.addresses;
+    } catch (err) {
+        if (prfKey.fill) prfKey.fill(0);
+        if (errorEl) showError(errorEl, 'Failed to scan accounts.');
+        else rejectSession('Failed to scan accounts.');
+        return;
+    }
+
+    // Ask the wallet for balances (non-blocking — shows picker immediately,
+    // balances fill in when ready).
+    const addrList = addresses.map(a => a.address);
+
+    // Show picker immediately (without balances)
+    setUI(renderAccountPicker(addresses));
+    attachPickerHandlers({ addresses, prfKey, credentialId, allowOverwrite });
+
+    // Then fetch balances and re-render with them
+    const balances = await requestBalancesFromWallet(addrList);
+    if (Object.keys(balances).length > 0) {
+        setUI(renderAccountPicker(addresses, balances));
+        attachPickerHandlers({ addresses, prfKey, credentialId, allowOverwrite });
+    }
+}
+
+function attachPickerHandlers({ addresses, prfKey, credentialId, allowOverwrite }) {
+    ui.querySelector('#btn-cancel').onclick = () => {
+        if (prfKey.fill) prfKey.fill(0);
+        rejectSession('User cancelled');
+    };
+    ui.querySelectorAll('.account-row').forEach(row => {
+        row.onclick = async () => {
+            const idx = parseInt(row.dataset.index, 10);
+            ui.querySelectorAll('.account-row').forEach(r => { r.disabled = true; });
+            row.style.opacity = '0.6';
+            try {
+                const result = await callWorker('restoreWithPasskey', {
+                    prfKey: Array.from(prfKey),
+                    credentialId: Array.from(new Uint8Array(credentialId)),
+                    prfSalt: Array.from(RESTORE_PRF_SALT),
+                    accountIndex: idx,
+                    allowOverwrite: !!allowOverwrite,
+                });
+                if (prfKey.fill) prfKey.fill(0);
+                resolveSession({ address: result.address });
+            } catch (err) {
+                if (prfKey.fill) prfKey.fill(0);
+                const pickerError = ui.querySelector('#error');
+                if (pickerError) {
+                    showError(pickerError, 'Failed: ' + err.message);
+                    ui.querySelectorAll('.account-row').forEach(r => {
+                        r.disabled = false;
+                        r.style.opacity = '';
+                    });
+                }
+            }
+        };
+    });
 }
 
 async function flowRestoreWithPasskey(args) {
@@ -1409,63 +1517,61 @@ async function flowRestoreWithPasskey(args) {
             return;
         }
 
-        // Scan account indices to find all wallets for this passkey.
-        // Derive addresses for indices 0..9 and let the user pick.
+        // Scan account indices and show the picker with balances
         setButtonState(btn, 'Scanning accounts...', true);
-        let addresses;
+        await showAccountPickerFlow({ prfKey, credentialId, allowOverwrite: !!args.allowOverwrite, errorEl });
+    };
+}
+
+async function flowSwitchAccount() {
+    showUI();
+
+    // Same flow as restore, but triggered from within the app (settings).
+    // Always allows overwrite since the user is intentionally switching.
+    setUI(`
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>Switch Account</h1>
+                    <p>Authenticate with your passkey, then pick an account.</p>
+                </div>
+                <div class="keyguard-body" style="text-align:center;">
+                    <button id="btn-auth" type="button" class="btn-primary">Authenticate</button>
+                    <p class="error-text" id="error" style="display:none;"></p>
+                </div>
+                <div class="keyguard-footer">
+                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#btn-auth').onclick = async () => {
+        const btn = ui.querySelector('#btn-auth');
+        const errorEl = ui.querySelector('#error');
+        setButtonState(btn, 'Authenticating...', true);
+
+        let prfKey;
+        let credentialId;
+
         try {
-            const scan = await callWorker('scanAccountAddresses', {
-                prfKey: Array.from(prfKey),
-                maxIndex: 9,
-            });
-            addresses = scan.addresses;
+            const params = { prfSalt: Array.from(RESTORE_PRF_SALT) };
+            const result = await requestWebAuthnFromWallet('getForRestore', params);
+            prfKey = result.prfKey;
+            credentialId = result.credentialId;
         } catch (err) {
-            if (prfKey.fill) prfKey.fill(0);
             setButtonState(btn, 'Authenticate', false);
-            showError(errorEl, 'Failed to scan accounts.');
+            if (err.name === 'NotAllowedError') {
+                showError(errorEl, 'Authentication cancelled.');
+            } else {
+                showError(errorEl, 'Passkey authentication failed.');
+            }
             return;
         }
 
-        // Helper to restore a specific account index
-        async function restoreAccount(accountIndex) {
-            try {
-                const result = await callWorker('restoreWithPasskey', {
-                    prfKey: Array.from(prfKey),
-                    credentialId: Array.from(new Uint8Array(credentialId)),
-                    prfSalt: Array.from(RESTORE_PRF_SALT),
-                    accountIndex,
-                    allowOverwrite: !!args.allowOverwrite,
-                });
-                if (prfKey.fill) prfKey.fill(0);
-                resolveSession({ address: result.address });
-            } catch (err) {
-                if (prfKey.fill) prfKey.fill(0);
-                const pickerError = ui.querySelector('#error');
-                if (pickerError) {
-                    showError(pickerError, 'Restoration failed: ' + err.message);
-                    // Re-enable buttons so user can try again
-                    ui.querySelectorAll('.account-row').forEach(r => {
-                        r.disabled = false;
-                        r.style.opacity = '';
-                    });
-                }
-            }
-        }
-
-        // Show account picker — user selects by recognizing their address
-        setUI(renderAccountPicker(addresses));
-        ui.querySelector('#btn-cancel').onclick = () => {
-            if (prfKey.fill) prfKey.fill(0);
-            rejectSession('User cancelled');
-        };
-        ui.querySelectorAll('.account-row').forEach(row => {
-            row.onclick = async () => {
-                const idx = parseInt(row.dataset.index, 10);
-                ui.querySelectorAll('.account-row').forEach(r => { r.disabled = true; });
-                row.style.opacity = '0.6';
-                await restoreAccount(idx);
-            };
-        });
+        setButtonState(btn, 'Scanning accounts...', true);
+        await showAccountPickerFlow({ prfKey, credentialId, allowOverwrite: true, errorEl });
     };
 }
 
@@ -1569,6 +1675,9 @@ window.addEventListener('message', async (event) => {
     // WebAuthn responses are handled by the requestWebAuthnFromWallet listener — ignore here.
     if (event.data?.type === 'webauthn-response') return;
 
+    // Balance responses are handled by the requestBalancesFromWallet listener — ignore here.
+    if (event.data?.type === 'balance-response') return;
+
     const { sessionId, command, args } = event.data;
     if (typeof command !== 'string') return;
     if (!Number.isInteger(sessionId)) return;
@@ -1606,6 +1715,7 @@ window.addEventListener('message', async (event) => {
         case 'restoreWithPasskey': flowRestoreWithPasskey(args || {}); break;
         case 'registerWebAuthn': flowRegisterWebAuthn(); break;
         case 'removeWebAuthn':   flowRemoveWebAuthn(); break;
+        case 'switchAccount':    flowSwitchAccount(); break;
         default:
             rejectSession(`Unknown command: ${command}`);
     }

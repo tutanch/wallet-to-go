@@ -386,10 +386,25 @@ textarea.nq-input {
     min-width: 24px;
 }
 
+.account-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
 .account-address {
     font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
     font-size: 12px;
     color: var(--text-primary);
     word-break: break-all;
     line-height: 1.4;
+}
+
+.account-balance {
+    font-family: 'Fira Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--nq-green);
 }

@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn } from '../modules/keyguard-api.js';
+import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount } from '../modules/keyguard-api.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 
@@ -33,6 +33,13 @@ export function settingsView() {
                     <p class="nq-text" style="margin-bottom: 12px;" id="webauthn-status">Checking biometric support...</p>
                     <button class="nq-button-s" id="btn-webauthn" style="display: none;"></button>
                     <p class="nq-text error-text" id="webauthn-error" style="display: none; margin-top: 8px;"></p>
+                </div>
+
+                <div class="settings-section" id="switch-section" style="display: none;">
+                    <h2 class="nq-label">Accounts</h2>
+                    <p class="nq-text" style="margin-bottom: 12px;">Switch between different wallets linked to your passkey.</p>
+                    <button class="nq-button-s" id="btn-switch">Switch Account</button>
+                    <p class="nq-text error-text" id="switch-error" style="display: none; margin-top: 8px;"></p>
                 </div>
 
                 <div class="settings-section">
@@ -159,7 +166,38 @@ export function settingsView() {
         }
     }
 
-    updateWebAuthnUI();
+    updateWebAuthnUI().then(async () => {
+        // Show "Switch Account" section if the wallet has a passkey
+        try {
+            const info = await getWebAuthnInfo();
+            if (info.hasWebAuthn) {
+                el.querySelector('#switch-section').style.display = '';
+            }
+        } catch (_) {}
+    });
+
+    // Switch Account
+    el.querySelector('#btn-switch').addEventListener('click', async () => {
+        const btn = el.querySelector('#btn-switch');
+        const errorEl = el.querySelector('#switch-error');
+        btn.disabled = true;
+        btn.textContent = 'Opening keyguard...';
+        errorEl.style.display = 'none';
+
+        try {
+            const result = await switchAccount();
+            // Account switched — reload dashboard
+            navigate('#dashboard');
+        } catch (e) {
+            if (e.message !== 'User cancelled') {
+                errorEl.textContent = 'Could not switch account. Please try again.';
+                errorEl.style.display = '';
+            }
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Switch Account';
+        }
+    });
 
     webauthnBtn.addEventListener('click', async () => {
         webauthnBtn.disabled = true;
