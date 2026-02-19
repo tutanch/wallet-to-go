@@ -19,10 +19,15 @@ function normalizeUrlPrefix(url) {
 function isAllowedWalletReferrer() {
     if (!ORIGINS_CONFIGURED) return true; // local/dev mode with placeholders
     if (window.parent === window) return true; // direct open for debugging
-    if (!document.referrer) return false;
+    // Some browsers/policies strip referrers for cross-origin iframes.
+    // In that case we can still rely on strict postMessage origin/source checks.
+    if (!document.referrer) return true;
     try {
         const ref = new URL(document.referrer);
         if (ref.origin !== WALLET_ORIGIN) return false;
+        // With strict-origin-when-cross-origin, only origin is sent (`/` path).
+        // Accept that case to avoid false negatives in production.
+        if (!ref.pathname || ref.pathname === '/') return true;
         const expected = new URL(normalizeUrlPrefix(WALLET_APP_URL));
         const expectedPrefix = normalizeUrlPrefix(`${expected.origin}${expected.pathname}`);
         const refUrl = new URL(normalizeUrlPrefix(`${ref.origin}${ref.pathname}`));
