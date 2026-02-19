@@ -1,4 +1,4 @@
-// Hub-compatible cashlink encoder.
+// Hub-compatible cashlink encoder/decoder.
 // Binary format: [32 bytes private key][8 bytes value BE uint64][optional: 1 byte msg len + N bytes msg]
 // URL: https://hub.nimiq.com/cashlink/#<base64url>
 
@@ -12,6 +12,10 @@ const HUB_URLS = {
 // CASH marker — funding TX extra data recognized by the Hub.
 // Encodes "CASH" as [0x00, 'C'+63, 'A'+63, 'S'+63, 'H'+63].
 export const CASHLINK_FUNDING_DATA = [0, 130, 128, 146, 135];
+
+// LINK marker — claiming TX extra data recognized by the Hub.
+// Encodes "LINK" as [0x00, 'L'+63, 'I'+63, 'N'+63, 'K'+63].
+export const CASHLINK_CLAIMING_DATA = [0, 139, 136, 141, 138];
 
 /**
  * Encode a cashlink into a Hub-compatible URL.
@@ -53,6 +57,38 @@ export function encodeCashlink({ privateKeyBytes, valueLuna, message }) {
     return base + encoded;
 }
 
+/**
+ * Decode a Hub cashlink URL back into its components.
+ *
+ * @param {string} url  Full cashlink URL
+ * @returns {{ privateKeyBytes: Uint8Array, valueLuna: number, message: string }}
+ */
+export function decodeCashlink(url) {
+    const hashIdx = url.lastIndexOf('#');
+    if (hashIdx === -1) throw new Error('Invalid cashlink URL');
+    let encoded = url.substring(hashIdx + 1);
+
+    // Remove ~ chars (iPhone/WhatsApp compat inserted during encoding)
+    encoded = encoded.replace(/~/g, '');
+
+    const bytes = fromBase64Url(encoded);
+    if (bytes.length < 40) throw new Error('Cashlink data too short');
+
+    const privateKeyBytes = bytes.slice(0, 32);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const valueLuna = Number(view.getBigUint64(32));
+
+    let message = '';
+    if (bytes.length > 40) {
+        const msgLen = bytes[40];
+        if (bytes.length >= 41 + msgLen) {
+            message = new TextDecoder().decode(bytes.slice(41, 41 + msgLen));
+        }
+    }
+
+    return { privateKeyBytes, valueLuna, message };
+}
+
 /** Standard base64url encode (RFC 4648 §5, no padding). */
 export function toBase64Url(bytes) {
     let binary = '';
@@ -61,4 +97,14 @@ export function toBase64Url(bytes) {
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=+$/, '');
+}
+
+/** Standard base64url decode (RFC 4648 §5). */
+export function fromBase64Url(str) {
+    const padded = str + '==='.slice((str.length + 3) % 4);
+    const standard = padded.replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(standard);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
 }

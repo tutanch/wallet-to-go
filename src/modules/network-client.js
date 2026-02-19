@@ -72,6 +72,17 @@ export async function getBalance(address) {
     return accounts[0] ? accounts[0].balance : 0;
 }
 
+export async function getBalances(addresses) {
+    const client = await getClient();
+    await waitForConsensus();
+    const accounts = await client.getAccounts(addresses);
+    const balances = {};
+    for (let i = 0; i < addresses.length; i++) {
+        balances[addresses[i]] = accounts[i] ? Number(accounts[i].balance) : 0;
+    }
+    return balances;
+}
+
 export async function getHistory(address, limit = 50) {
     const client = await getClient();
     await waitForConsensus();

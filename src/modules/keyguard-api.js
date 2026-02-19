@@ -352,3 +352,19 @@ export function encryptCashlinkData({ data }) {
 export function decryptCashlinkData({ ciphertext, iv }) {
     return call('decryptCashlinkData', { ciphertext, iv });
 }
+
+/**
+ * Derive addresses from cashlink private keys. No UI shown.
+ * Returns { addresses: string[] }.
+ */
+export function getCashlinkAddresses({ privateKeys }) {
+    return call('getCashlinkAddresses', { privateKeys }, 30000);
+}
+
+/**
+ * Sign cashlink claim transactions using the cashlink private keys. No UI shown.
+ * Returns { serializedTransactions: Uint8Array[] }.
+ */
+export function signCashlinkClaims({ claims }) {
+    return call('signCashlinkClaims', { claims }, 60000);
+}

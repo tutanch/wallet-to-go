@@ -1,9 +1,9 @@
 import { navigate } from '../router.js';
-import { getStoredAddress, getDerivedAddresses, generateCashlinkKeys, signBatchTransaction } from '../modules/keyguard-api.js';
+import { getStoredAddress, getDerivedAddresses, generateCashlinkKeys, signBatchTransaction, getCashlinkAddresses, signCashlinkClaims } from '../modules/keyguard-api.js';
 import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { nimToLuna, formatNim, getNetworkConfig } from '../config.js';
-import { encodeCashlink, CASHLINK_FUNDING_DATA } from '../modules/cashlink-encoder.js';
+import { encodeCashlink, decodeCashlink, CASHLINK_FUNDING_DATA } from '../modules/cashlink-encoder.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
 import { getSavedRunsMeta, saveCashlinkRun, loadCashlinkRun, deleteCashlinkRun } from '../modules/cashlink-storage.js';
@@ -28,113 +28,164 @@ export async function cashlinksView() {
     el.className = 'view-container';
 
     let stopRequested = false;
+    let currentMode = 'create';
 
-    // ── Step 1: Input form ──────────────────────────────────────────
+    // ── Mode switching ──────────────────────────────────────────
 
-    el.innerHTML = `
-        <div class="nq-card">
-            <div class="nq-card-header">
-                <h1 class="nq-h1">Create Cashlinks</h1>
-                <p class="nq-text">Generate funded links redeemable via the Nimiq Hub.</p>
+    function showCreateMode() {
+        currentMode = 'create';
+        stopRequested = false;
+        showCreateInput();
+    }
+
+    function showClaimMode() {
+        currentMode = 'claim';
+        stopRequested = false;
+        showClaimInput();
+    }
+
+    // ── Tab bar helper ──────────────────────────────────────────
+
+    function renderTabs(container) {
+        const tabs = document.createElement('div');
+        tabs.className = 'cashlink-tabs';
+
+        const createTab = document.createElement('button');
+        createTab.className = 'cashlink-tab' + (currentMode === 'create' ? ' active' : '');
+        createTab.textContent = 'Create';
+        createTab.addEventListener('click', () => { if (currentMode !== 'create') showCreateMode(); });
+
+        const claimTab = document.createElement('button');
+        claimTab.className = 'cashlink-tab' + (currentMode === 'claim' ? ' active' : '');
+        claimTab.textContent = 'Claim';
+        claimTab.addEventListener('click', () => { if (currentMode !== 'claim') showClaimMode(); });
+
+        tabs.append(createTab, claimTab);
+        container.appendChild(tabs);
+    }
+
+    // ── Create: Step 1 — Input form ─────────────────────────────
+
+    function showCreateInput() {
+        el.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'nq-card';
+
+        // Header with tabs
+        const header = document.createElement('div');
+        header.className = 'nq-card-header';
+        renderTabs(header);
+        const subtitle = document.createElement('p');
+        subtitle.className = 'nq-text';
+        subtitle.textContent = 'Generate funded links redeemable via the Nimiq Hub.';
+        header.appendChild(subtitle);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'nq-card-body';
+        body.innerHTML = `
+            <div class="form-group">
+                <label class="nq-label">Number of cashlinks (1\u2013100)</label>
+                <input type="number" class="nq-input" id="cl-count" placeholder="1" value="1" min="1" max="100" step="1">
             </div>
-            <div class="nq-card-body">
-                <div class="form-group">
-                    <label class="nq-label">Number of cashlinks (1–100)</label>
-                    <input type="number" class="nq-input" id="cl-count" placeholder="1" value="1" min="1" max="100" step="1">
-                </div>
-                <div class="form-group">
-                    <label class="nq-label">Amount per cashlink (NIM)</label>
-                    <input type="number" class="nq-input" id="cl-amount" placeholder="1.00" step="0.00001" min="0">
-                </div>
-                <div class="form-group">
-                    <label class="nq-label">Message (optional)</label>
-                    <input type="text" class="nq-input" id="cl-message" placeholder="" maxlength="255">
-                </div>
-                <div class="form-group">
-                    <label class="nq-label">Fee per funding TX (luna)</label>
-                    <input type="number" class="nq-input" id="cl-fee" placeholder="0" value="0" min="0" step="1">
-                </div>
-                <p class="nq-text error-text" id="cl-error" style="display:none;"></p>
+            <div class="form-group">
+                <label class="nq-label">Amount per cashlink (NIM)</label>
+                <input type="number" class="nq-input" id="cl-amount" placeholder="1.00" step="0.00001" min="0">
             </div>
-            <div class="nq-card-footer">
-                <button class="nq-button-s" id="btn-back">Back</button>
-                <button class="nq-button light-blue" id="btn-generate">Generate</button>
+            <div class="form-group">
+                <label class="nq-label">Message (optional)</label>
+                <input type="text" class="nq-input" id="cl-message" placeholder="" maxlength="255">
             </div>
-        </div>
-    `;
+            <div class="form-group">
+                <label class="nq-label">Fee per funding TX (luna)</label>
+                <input type="number" class="nq-input" id="cl-fee" placeholder="0" value="0" min="0" step="1">
+            </div>
+            <p class="nq-text error-text" id="cl-error" style="display:none;"></p>
+        `;
 
-    el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
+        // Saved runs section
+        const savedSection = document.createElement('div');
+        savedSection.className = 'saved-runs-section';
+        const savedHeader = document.createElement('h2');
+        savedHeader.className = 'nq-label';
+        savedHeader.textContent = 'Saved Runs';
+        savedSection.appendChild(savedHeader);
+        const savedList = document.createElement('div');
+        savedList.className = 'saved-runs-list';
+        savedSection.appendChild(savedList);
+        body.appendChild(savedSection);
 
-    el.querySelector('#btn-generate').addEventListener('click', async () => {
-        const errorEl = el.querySelector('#cl-error');
-        errorEl.style.display = 'none';
+        renderSavedRuns(savedSection, savedList);
 
-        const count = parseInt(el.querySelector('#cl-count').value);
-        const amountRaw = el.querySelector('#cl-amount').value.trim();
-        const amountLuna = nimToLuna(amountRaw);
-        const feeValue = Math.max(0, parseInt(el.querySelector('#cl-fee').value) || 0);
-        const message = el.querySelector('#cl-message').value.trim();
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'nq-card-footer';
+        const btnBack = document.createElement('button');
+        btnBack.className = 'nq-button-s';
+        btnBack.textContent = 'Back';
+        btnBack.addEventListener('click', () => navigate('#dashboard'));
+        const btnGenerate = document.createElement('button');
+        btnGenerate.className = 'nq-button light-blue';
+        btnGenerate.textContent = 'Generate';
+        btnGenerate.addEventListener('click', async () => {
+            const errorEl = body.querySelector('#cl-error');
+            errorEl.style.display = 'none';
 
-        if (!Number.isInteger(count) || count < 1 || count > 100) {
-            errorEl.textContent = 'Count must be between 1 and 100.';
-            errorEl.style.display = '';
-            return;
-        }
-        if (isNaN(amountLuna) || amountLuna <= 0) {
-            errorEl.textContent = 'Please enter a valid amount.';
-            errorEl.style.display = '';
-            return;
-        }
+            const count = parseInt(body.querySelector('#cl-count').value);
+            const amountRaw = body.querySelector('#cl-amount').value.trim();
+            const amountLuna = nimToLuna(amountRaw);
+            const feeValue = Math.max(0, parseInt(body.querySelector('#cl-fee').value) || 0);
+            const message = body.querySelector('#cl-message').value.trim();
 
-        const msgBytes = message ? new TextEncoder().encode(message) : new Uint8Array(0);
-        if (msgBytes.length > 255) {
-            errorEl.textContent = 'Message is too long (max 255 bytes).';
-            errorEl.style.display = '';
-            return;
-        }
+            if (!Number.isInteger(count) || count < 1 || count > 100) {
+                errorEl.textContent = 'Count must be between 1 and 100.';
+                errorEl.style.display = '';
+                return;
+            }
+            if (isNaN(amountLuna) || amountLuna <= 0) {
+                errorEl.textContent = 'Please enter a valid amount.';
+                errorEl.style.display = '';
+                return;
+            }
 
-        const btn = el.querySelector('#btn-generate');
-        btn.disabled = true;
-        btn.textContent = 'Generating keys...';
+            const msgBytes = message ? new TextEncoder().encode(message) : new Uint8Array(0);
+            if (msgBytes.length > 255) {
+                errorEl.textContent = 'Message is too long (max 255 bytes).';
+                errorEl.style.display = '';
+                return;
+            }
 
-        try {
-            const { keys } = await generateCashlinkKeys({ count });
-            showPreview(keys, amountLuna, feeValue, message);
-        } catch (e) {
-            console.error('Key generation failed:', e);
-            errorEl.textContent = 'Key generation failed. Please try again.';
-            errorEl.style.display = '';
-            btn.textContent = 'Generate';
-            btn.disabled = false;
-        }
-    });
+            btnGenerate.disabled = true;
+            btnGenerate.textContent = 'Generating keys...';
 
-    // ── Saved Runs Section ──────────────────────────────────────────
+            try {
+                const { keys } = await generateCashlinkKeys({ count });
+                showCreatePreview(keys, amountLuna, feeValue, message);
+            } catch (e) {
+                console.error('Key generation failed:', e);
+                errorEl.textContent = 'Key generation failed. Please try again.';
+                errorEl.style.display = '';
+                btnGenerate.textContent = 'Generate';
+                btnGenerate.disabled = false;
+            }
+        });
+        footer.append(btnBack, btnGenerate);
 
-    const cardBody = el.querySelector('.nq-card-body');
-    const savedSection = document.createElement('div');
-    savedSection.className = 'saved-runs-section';
+        card.append(header, body, footer);
+        el.appendChild(card);
+    }
 
-    const savedHeader = document.createElement('h2');
-    savedHeader.className = 'nq-label';
-    savedHeader.textContent = 'Saved Runs';
-    savedSection.appendChild(savedHeader);
+    // ── Saved runs rendering ────────────────────────────────────
 
-    const savedList = document.createElement('div');
-    savedList.className = 'saved-runs-list';
-    savedSection.appendChild(savedList);
-
-    cardBody.appendChild(savedSection);
-
-    function renderSavedRuns() {
+    function renderSavedRuns(section, list) {
         const runs = getSavedRunsMeta();
-        savedList.innerHTML = '';
+        list.innerHTML = '';
 
         if (runs.length === 0) {
-            savedSection.style.display = 'none';
+            section.style.display = 'none';
             return;
         }
-        savedSection.style.display = '';
+        section.style.display = '';
 
         for (const run of runs) {
             const row = document.createElement('div');
@@ -184,21 +235,19 @@ export async function cashlinksView() {
             deleteBtn.textContent = 'Delete';
             deleteBtn.addEventListener('click', () => {
                 deleteCashlinkRun(run.id);
-                renderSavedRuns();
+                renderSavedRuns(section, list);
                 showToast('Run deleted', 'info');
             });
 
             actions.append(viewBtn, deleteBtn);
             row.append(info, actions);
-            savedList.appendChild(row);
+            list.appendChild(row);
         }
     }
 
-    renderSavedRuns();
+    // ── Create: Step 2 — Preview ────────────────────────────────
 
-    // ── Step 2: Preview ─────────────────────────────────────────────
-
-    function showPreview(keys, amountLuna, feeValue, message) {
+    function showCreatePreview(keys, amountLuna, feeValue, message) {
         const totalCost = (amountLuna + feeValue) * keys.length;
 
         el.innerHTML = `
@@ -281,12 +330,12 @@ export async function cashlinksView() {
         });
 
         el.querySelector('#btn-edit').addEventListener('click', () => navigate('#cashlinks'));
-        btnFund.addEventListener('click', () => startSigning(keys, amountLuna, feeValue, message));
+        btnFund.addEventListener('click', () => startCreateSigning(keys, amountLuna, feeValue, message));
     }
 
-    // ── Step 3: Sign & Broadcast ────────────────────────────────────
+    // ── Create: Step 3 — Sign & Broadcast ───────────────────────
 
-    async function startSigning(keys, amountLuna, feeValue, message) {
+    async function startCreateSigning(keys, amountLuna, feeValue, message) {
         const btnFund = el.querySelector('#btn-fund');
         const errorEl = el.querySelector('#cl-error');
         errorEl.style.display = 'none';
@@ -359,7 +408,7 @@ export async function cashlinksView() {
                 }
             }
 
-            showResults(fundedKeys, amountLuna, message, sent, failed);
+            showCreateResults(fundedKeys, amountLuna, message, sent, failed);
 
         } catch (e) {
             btnFund.disabled = false;
@@ -382,9 +431,9 @@ export async function cashlinksView() {
         }
     }
 
-    // ── Step 4: Results ─────────────────────────────────────────────
+    // ── Create: Step 4 — Results ────────────────────────────────
 
-    function showResults(fundedKeys, amountLuna, message, sent, failed) {
+    function showCreateResults(fundedKeys, amountLuna, message, sent, failed) {
         // Build cashlink URLs
         const cashlinks = fundedKeys.map(key => ({
             url: encodeCashlink({
@@ -419,7 +468,6 @@ export async function cashlinksView() {
         if (failed > 0) summaryParts.push(`${failed} failed`);
         el.querySelector('#result-summary').textContent = summaryParts.join(', ');
 
-        // Render each cashlink as a simple row
         renderCashlinkList(el.querySelector('#cashlink-list'), cashlinks.map(cl => cl.url));
 
         // Copy All
@@ -462,7 +510,7 @@ export async function cashlinksView() {
         el.querySelector('#btn-done').addEventListener('click', () => navigate('#dashboard'));
     }
 
-    // ── Saved Run Results ───────────────────────────────────────────
+    // ── Saved Run Results ───────────────────────────────────────
 
     function showSavedRunResults(data, runMeta) {
         el.innerHTML = `
@@ -504,10 +552,459 @@ export async function cashlinksView() {
             exportCsv(data.urls, data.addresses || [], runMeta.amountNim, `cashlinks-saved-${runMeta.id}.csv`);
         });
 
-        el.querySelector('#btn-back-to-form').addEventListener('click', () => navigate('#cashlinks'));
+        el.querySelector('#btn-back-to-form').addEventListener('click', () => showCreateMode());
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+    // ══ CLAIM MODE ════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════
+
+    // ── Claim: Step 1 — Input ───────────────────────────────────
+
+    function showClaimInput() {
+        el.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'nq-card';
+
+        // Header with tabs
+        const header = document.createElement('div');
+        header.className = 'nq-card-header';
+        renderTabs(header);
+        const subtitle = document.createElement('p');
+        subtitle.className = 'nq-text';
+        subtitle.textContent = 'Paste cashlink URLs to claim funds back to your wallet.';
+        header.appendChild(subtitle);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'nq-card-body';
+        body.innerHTML = `
+            <div class="form-group">
+                <label class="nq-label">Cashlink URLs (one per line)</label>
+                <textarea class="nq-input" id="claim-urls" rows="6" placeholder="https://hub.nimiq.com/cashlink/#..."></textarea>
+            </div>
+            <div class="form-group file-upload-wrapper">
+                <label class="file-upload-label" id="csv-upload-label">
+                    Or upload CSV file
+                    <input type="file" accept=".csv,.txt" id="csv-upload" style="display:none">
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="nq-label">Fee per claim TX (luna)</label>
+                <input type="number" class="nq-input" id="claim-fee" placeholder="0" value="0" min="0" step="1">
+            </div>
+            <p class="nq-text error-text" id="claim-error" style="display:none;"></p>
+        `;
+
+        // CSV upload handler
+        const csvInput = body.querySelector('#csv-upload');
+        const csvLabel = body.querySelector('#csv-upload-label');
+        csvInput.addEventListener('change', () => {
+            const file = csvInput.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const text = reader.result;
+                // Extract cashlink URLs from CSV — first column or any column containing cashlink URLs
+                const urls = [];
+                const lines = text.split(/\r?\n/);
+                for (const line of lines) {
+                    const match = line.match(/(https?:\/\/[^\s,]*cashlink[^\s,]*#[^\s,]+)/i);
+                    if (match) urls.push(match[1]);
+                }
+                if (urls.length > 0) {
+                    body.querySelector('#claim-urls').value = urls.join('\n');
+                    csvLabel.textContent = `Loaded ${urls.length} URL${urls.length !== 1 ? 's' : ''}`;
+                } else {
+                    const errorEl = body.querySelector('#claim-error');
+                    errorEl.textContent = 'No cashlink URLs found in file.';
+                    errorEl.style.display = '';
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'nq-card-footer';
+        const btnBack = document.createElement('button');
+        btnBack.className = 'nq-button-s';
+        btnBack.textContent = 'Back';
+        btnBack.addEventListener('click', () => navigate('#dashboard'));
+        const btnParse = document.createElement('button');
+        btnParse.className = 'nq-button light-blue';
+        btnParse.textContent = 'Check Balances';
+        btnParse.addEventListener('click', () => parseAndCheckCashlinks(body, btnParse));
+        footer.append(btnBack, btnParse);
+
+        card.append(header, body, footer);
+        el.appendChild(card);
+    }
+
+    // ── Claim: Parse & check ────────────────────────────────────
+
+    async function parseAndCheckCashlinks(body, btn) {
+        const errorEl = body.querySelector('#claim-error');
+        errorEl.style.display = 'none';
+
+        const raw = body.querySelector('#claim-urls').value.trim();
+        const feeValue = Math.max(0, parseInt(body.querySelector('#claim-fee').value) || 0);
+
+        if (!raw) {
+            errorEl.textContent = 'Please paste at least one cashlink URL.';
+            errorEl.style.display = '';
+            return;
+        }
+
+        const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        const parsed = [];
+        const errors = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            try {
+                const { privateKeyBytes, valueLuna, message } = decodeCashlink(lines[i]);
+                parsed.push({ privateKeyBytes: Array.from(privateKeyBytes), valueLuna, message, line: i + 1 });
+            } catch (e) {
+                errors.push(`Line ${i + 1}: ${e.message}`);
+            }
+        }
+
+        if (parsed.length === 0) {
+            errorEl.textContent = errors.length > 0 ? errors.join('; ') : 'No valid cashlink URLs found.';
+            errorEl.style.display = '';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        try {
+            // Derive addresses from private keys (via keyguard)
+            const { addresses } = await getCashlinkAddresses({
+                privateKeys: parsed.map(p => p.privateKeyBytes),
+            });
+
+            // Batch-fetch balances
+            const balances = await network.getBalances(addresses);
+
+            // Attach address + balance to each parsed item
+            for (let i = 0; i < parsed.length; i++) {
+                parsed[i].address = addresses[i];
+                parsed[i].balance = balances[addresses[i]] || 0;
+            }
+
+            if (errors.length > 0) {
+                showToast(`${errors.length} invalid URL${errors.length !== 1 ? 's' : ''} skipped`, 'info');
+            }
+
+            showClaimPreview(parsed, feeValue);
+        } catch (e) {
+            console.error('Cashlink check failed:', e);
+            btn.disabled = false;
+            btn.textContent = 'Check Balances';
+
+            if (e.message === 'User cancelled') return;
+
+            if (e.message?.includes('Consensus timeout')) {
+                errorEl.textContent = 'Could not connect to network. Please try again.';
+            } else {
+                errorEl.textContent = 'Failed to check balances. Please try again.';
+            }
+            errorEl.style.display = '';
+        }
+    }
+
+    // ── Claim: Step 2 — Preview ─────────────────────────────────
+
+    function showClaimPreview(parsed, feeValue) {
+        const claimable = parsed.filter(p => p.balance > feeValue);
+        const empty = parsed.filter(p => p.balance === 0);
+        const dust = parsed.filter(p => p.balance > 0 && p.balance <= feeValue);
+        const totalRecoverable = claimable.reduce((sum, p) => sum + (p.balance - feeValue), 0);
+
+        el.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'nq-card';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'nq-card-header';
+        const h1 = document.createElement('h1');
+        h1.className = 'nq-h1';
+        h1.textContent = 'Claim Preview';
+        header.appendChild(h1);
+
+        // Summary
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'batch-summary';
+        summaryDiv.innerHTML = `
+            <div class="batch-summary-item">
+                <div class="num">${parsed.length}</div>
+                <div class="lbl">Total</div>
+            </div>
+            <div class="batch-summary-item">
+                <div class="num">${claimable.length}</div>
+                <div class="lbl">Claimable</div>
+            </div>
+            <div class="batch-summary-item">
+                <div class="num">${formatNim(totalRecoverable)}</div>
+                <div class="lbl">Recoverable</div>
+            </div>
+        `;
+
+        // Body
+        const bodyDiv = document.createElement('div');
+        bodyDiv.className = 'nq-card-body';
+        bodyDiv.appendChild(summaryDiv);
+
+        // Table
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'batch-table-container';
+        const table = document.createElement('table');
+        table.className = 'batch-table';
+
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        for (const hdr of ['#', 'Address', 'Balance', 'Status']) {
+            const th = document.createElement('th');
+            th.textContent = hdr;
+            headRow.appendChild(th);
+        }
+        thead.appendChild(headRow);
+
+        const tbody = document.createElement('tbody');
+        tbody.id = 'claim-tbody';
+
+        for (let i = 0; i < parsed.length; i++) {
+            const p = parsed[i];
+            const tr = document.createElement('tr');
+
+            const tdNum = document.createElement('td');
+            tdNum.textContent = i + 1;
+            const tdAddr = document.createElement('td');
+            tdAddr.textContent = truncateAddress(p.address);
+            tdAddr.title = p.address;
+            const tdBal = document.createElement('td');
+            tdBal.textContent = formatNim(p.balance) + ' NIM';
+            const tdStatus = document.createElement('td');
+            const badge = document.createElement('span');
+
+            if (p.balance > feeValue) {
+                badge.className = 'batch-badge batch-badge-sent';
+                badge.textContent = 'Claimable';
+            } else if (p.balance === 0) {
+                badge.className = 'batch-badge batch-badge-pending';
+                badge.textContent = 'Empty';
+            } else {
+                badge.className = 'batch-badge batch-badge-failed';
+                badge.textContent = 'Dust';
+            }
+
+            tdStatus.appendChild(badge);
+            tr.append(tdNum, tdAddr, tdBal, tdStatus);
+            tbody.appendChild(tr);
+        }
+
+        table.append(thead, tbody);
+        tableContainer.appendChild(table);
+        bodyDiv.appendChild(tableContainer);
+
+        if (empty.length > 0 || dust.length > 0) {
+            const note = document.createElement('p');
+            note.className = 'nq-text';
+            note.style.marginTop = '8px';
+            note.style.fontSize = '13px';
+            const parts = [];
+            if (empty.length > 0) parts.push(`${empty.length} empty`);
+            if (dust.length > 0) parts.push(`${dust.length} dust (balance \u2264 fee)`);
+            note.textContent = parts.join(', ') + ' \u2014 will be skipped.';
+            bodyDiv.appendChild(note);
+        }
+
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'nq-card-footer';
+        const btnBack = document.createElement('button');
+        btnBack.className = 'nq-button-s';
+        btnBack.textContent = 'Back';
+        btnBack.addEventListener('click', () => showClaimMode());
+        const btnClaim = document.createElement('button');
+        btnClaim.className = 'nq-button light-blue';
+        btnClaim.textContent = 'Claim All';
+        if (claimable.length === 0) {
+            btnClaim.disabled = true;
+        }
+        btnClaim.addEventListener('click', () => startClaiming(claimable, feeValue, parsed.length));
+        footer.append(btnBack, btnClaim);
+
+        card.append(header, bodyDiv, footer);
+        el.appendChild(card);
+    }
+
+    // ── Claim: Step 3 — Sign & broadcast ────────────────────────
+
+    async function startClaiming(claimable, feeValue, totalCount) {
+        const btnClaim = el.querySelector('.nq-button.light-blue');
+        btnClaim.disabled = true;
+        btnClaim.textContent = 'Preparing...';
+
+        try {
+            const validityStartHeight = await network.getHeadHeight();
+            const networkId = await network.getNetworkId();
+
+            const expectedConfig = getNetworkConfig();
+            if (networkId !== expectedConfig.id) {
+                throw new Error('Network ID mismatch');
+            }
+
+            // Build claims array
+            const claims = claimable.map(p => ({
+                privateKeyBytes: p.privateKeyBytes,
+                recipientAddress: address,
+                value: p.balance - feeValue,
+                fee: feeValue,
+                validityStartHeight,
+                networkId,
+            }));
+
+            btnClaim.textContent = 'Signing...';
+
+            const { serializedTransactions } = await signCashlinkClaims({ claims });
+
+            // Replace footer with stop button
+            const footer = el.querySelector('.nq-card-footer');
+            footer.innerHTML = '';
+            const btnStop = document.createElement('button');
+            btnStop.className = 'nq-button red';
+            btnStop.textContent = 'Stop';
+            btnStop.addEventListener('click', () => { stopRequested = true; });
+            footer.appendChild(btnStop);
+
+            // Update table status — find claimable rows by matching
+            // Claimable items are scattered in the table; remap to tbody rows
+            const rows = el.querySelectorAll('#claim-tbody tr');
+            const claimableIndices = [];
+            // We need to identify which rows correspond to claimable items
+            // Claimable items have the 'Claimable' badge
+            rows.forEach((row, idx) => {
+                const badge = row.querySelector('.batch-badge');
+                if (badge && badge.textContent === 'Claimable') {
+                    claimableIndices.push(idx);
+                }
+            });
+
+            // Parallel broadcast (concurrency 4)
+            const CONCURRENCY = 4;
+            let sent = 0, failed = 0;
+            let totalRecovered = 0;
+
+            for (let i = 0; i < serializedTransactions.length; i += CONCURRENCY) {
+                if (stopRequested) break;
+
+                const chunk = [];
+                for (let j = i; j < Math.min(i + CONCURRENCY, serializedTransactions.length); j++) {
+                    const rowIdx = claimableIndices[j];
+                    if (rowIdx !== undefined && rows[rowIdx]) {
+                        updateRowStatus(rows[rowIdx], 'sending', 'Sending...');
+                    }
+                    chunk.push(j);
+                }
+
+                const results = await Promise.allSettled(
+                    chunk.map(j => network.sendSerializedTransaction(serializedTransactions[j]))
+                );
+
+                for (let k = 0; k < results.length; k++) {
+                    const j = chunk[k];
+                    const rowIdx = claimableIndices[j];
+                    if (results[k].status === 'fulfilled') {
+                        if (rowIdx !== undefined && rows[rowIdx]) {
+                            updateRowStatus(rows[rowIdx], 'sent', 'Claimed');
+                        }
+                        sent++;
+                        totalRecovered += claimable[j].balance - feeValue;
+                    } else {
+                        if (rowIdx !== undefined && rows[rowIdx]) {
+                            updateRowStatus(rows[rowIdx], 'failed', 'Failed');
+                        }
+                        failed++;
+                    }
+                }
+            }
+
+            showClaimResults(sent, failed, totalRecovered, totalCount);
+
+        } catch (e) {
+            btnClaim.disabled = false;
+            btnClaim.textContent = 'Claim All';
+
+            if (e.message === 'User cancelled') return;
+
+            console.error('Cashlink claiming failed:', e);
+            const errorEl = document.createElement('p');
+            errorEl.className = 'nq-text error-text';
+            const msg = e.message || '';
+            if (msg.includes('Network ID mismatch')) {
+                errorEl.textContent = 'Network mismatch. Please check your network setting.';
+            } else if (msg.includes('Consensus timeout')) {
+                errorEl.textContent = 'Could not connect to network. Please try again.';
+            } else if (msg.includes('timed out')) {
+                errorEl.textContent = 'Keyguard timed out. Please try again.';
+            } else {
+                errorEl.textContent = 'Claiming failed. Please try again.';
+            }
+            const body = el.querySelector('.nq-card-body');
+            if (body) body.appendChild(errorEl);
+        }
+    }
+
+    // ── Claim: Step 4 — Results ─────────────────────────────────
+
+    function showClaimResults(sent, failed, totalRecovered, totalCount) {
+        el.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'nq-card';
+
+        const header = document.createElement('div');
+        header.className = 'nq-card-header';
+        const h1 = document.createElement('h1');
+        h1.className = 'nq-h1';
+        h1.textContent = 'Cashlinks Claimed';
+        header.appendChild(h1);
+
+        const summary = document.createElement('p');
+        summary.className = 'nq-text';
+        const parts = [`${sent} claimed`];
+        if (failed > 0) parts.push(`${failed} failed`);
+        parts.push(`${formatNim(totalRecovered)} NIM recovered`);
+        summary.textContent = parts.join(' \u2014 ');
+        header.appendChild(summary);
+
+        const body = document.createElement('div');
+        body.className = 'nq-card-body';
+
+        const detail = document.createElement('p');
+        detail.className = 'nq-text';
+        detail.textContent = `Out of ${totalCount} cashlink${totalCount !== 1 ? 's' : ''} checked, ${sent} ${sent === 1 ? 'was' : 'were'} successfully claimed back to your wallet.`;
+        body.appendChild(detail);
+
+        const footer = document.createElement('div');
+        footer.className = 'nq-card-footer';
+        const btnDone = document.createElement('button');
+        btnDone.className = 'nq-button-s';
+        btnDone.textContent = 'Back to Dashboard';
+        btnDone.addEventListener('click', () => navigate('#dashboard'));
+        const btnAgain = document.createElement('button');
+        btnAgain.className = 'nq-button-s';
+        btnAgain.textContent = 'Claim More';
+        btnAgain.addEventListener('click', () => showClaimMode());
+        footer.append(btnDone, btnAgain);
+
+        card.append(header, body, footer);
+        el.appendChild(card);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
 
     function renderCashlinkList(container, urls) {
         urls.forEach((url, i) => {
@@ -552,6 +1049,10 @@ export async function cashlinksView() {
         if (s.length <= 22) return s;
         return s.substring(0, 9) + '...' + s.substring(s.length - 9);
     }
+
+    // ── Init ────────────────────────────────────────────────────
+
+    showCreateMode();
 
     const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
     return {

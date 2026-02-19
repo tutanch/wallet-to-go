@@ -756,6 +756,59 @@ const handlers = {
         return { keys };
     },
 
+    async getCashlinkAddresses({ privateKeys }) {
+        await ensureWasm();
+        const addresses = [];
+        for (const pkBytes of privateKeys) {
+            const pk = new PrivateKey(new Uint8Array(pkBytes));
+            let publicKey;
+            try {
+                publicKey = PublicKey.derive(pk);
+                addresses.push(publicKey.toAddress().toUserFriendlyAddress());
+            } finally {
+                freeWasm(pk);
+                freeWasm(publicKey);
+            }
+        }
+        return { addresses };
+    },
+
+    async signCashlinkClaims({ claims }) {
+        await ensureWasm();
+        if (!Array.isArray(claims) || claims.length === 0) {
+            throw new Error('No claims provided');
+        }
+
+        const serializedTransactions = [];
+        const linkData = new Uint8Array([0, 139, 136, 141, 138]);
+
+        for (const claim of claims) {
+            const pk = new PrivateKey(new Uint8Array(claim.privateKeyBytes));
+            let publicKey, signature;
+            try {
+                publicKey = PublicKey.derive(pk);
+                const sender = publicKey.toAddress();
+                const recipient = Address.fromString(claim.recipientAddress);
+
+                const tx = TransactionBuilder.newBasicWithData(
+                    sender, recipient, linkData,
+                    BigInt(claim.value), BigInt(claim.fee),
+                    claim.validityStartHeight, claim.networkId,
+                );
+
+                signature = Signature.create(pk, publicKey, tx.serializeContent());
+                tx.proof = SignatureProof.singleSig(publicKey, signature).serialize();
+                serializedTransactions.push(tx.serialize());
+            } finally {
+                freeWasm(signature);
+                freeWasm(publicKey);
+                freeWasm(pk);
+            }
+        }
+
+        return { serializedTransactions };
+    },
+
     async encryptCashlinkData({ data, password, prfKey }) {
         await ensureWasm();
         const record = await getRecord();
