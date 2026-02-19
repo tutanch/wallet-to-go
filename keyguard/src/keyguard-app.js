@@ -392,6 +392,12 @@ function generatePrfSalt() {
     return crypto.getRandomValues(new Uint8Array(32));
 }
 
+function nextPasskeyName() {
+    const n = parseInt(localStorage.getItem('nimiq-pk-idx') || '0', 10) + 1;
+    localStorage.setItem('nimiq-pk-idx', String(n));
+    return `Nimiq Wallet - ${n}`;
+}
+
 async function createWebAuthnCredential(userId, userName, prfSalt) {
     return await requestWebAuthnFromWallet('create', {
         userId: Array.from(userId),
@@ -540,7 +546,7 @@ async function flowCreateWallet() {
             try {
                 const userId = crypto.getRandomValues(new Uint8Array(16));
                 const { credentialId, prfKey } = await createWebAuthnCredential(
-                    userId, 'Nimiq Wallet', RESTORE_PRF_SALT,
+                    userId, nextPasskeyName(), RESTORE_PRF_SALT,
                 );
 
                 // Derive wallet deterministically from PRF output
@@ -682,10 +688,9 @@ async function flowImportWallet() {
 
                 try {
                     const prfSalt = generatePrfSalt();
-                    // Use a temporary address placeholder for credential creation
-                    const userId = new TextEncoder().encode('nimiq-import-user');
+                    const userId = crypto.getRandomValues(new Uint8Array(16));
                     const { credentialId, prfKey } = await createWebAuthnCredential(
-                        userId, 'Nimiq Wallet', prfSalt,
+                        userId, nextPasskeyName(), prfSalt,
                     );
 
                     // Import wallet with passkey only (no password)
