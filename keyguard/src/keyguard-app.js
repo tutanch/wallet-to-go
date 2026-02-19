@@ -307,30 +307,25 @@ function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees,
         </div>`;
 }
 
-function renderDeleteConfirm({ showPassword = true } = {}) {
+function renderDeleteConfirm() {
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
                 <div class="keyguard-header">
-                    <h1>Delete Wallet</h1>
-                    <p>This removes your wallet from this device. If you set up a passkey, an encrypted backup is kept so you can log back in with it. Make sure you have your recovery words backed up!</p>
+                    <h1>Log Out</h1>
+                    <p>This removes your wallet from this device. If you set up a passkey, you can log back in with it. Make sure you have your recovery words backed up!</p>
                 </div>
                 <form id="delete-form" style="display: contents;">
                     <div class="keyguard-body">
-                        ${showPassword ? `
-                        <div class="form-group">
-                            <input type="password" class="nq-input" id="password"
-                                placeholder="Enter your password" autocomplete="current-password">
-                        </div>` : ''}
                         <div class="form-group">
                             <input type="text" class="nq-input" id="confirm-text"
-                                placeholder='Type "DELETE" to confirm' autocomplete="off">
+                                placeholder='Type "LOGOUT" to confirm' autocomplete="off">
                         </div>
                         <p class="error-text" id="error" style="display:none;"></p>
                     </div>
                     <div class="keyguard-footer">
                         <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
-                        <button id="btn-submit" type="submit" class="btn-primary danger">Delete Wallet</button>
+                        <button id="btn-submit" type="submit" class="btn-primary danger">Log Out</button>
                     </div>
                 </form>
             </div>
@@ -1200,78 +1195,26 @@ function showBiometricForExport(info) {
 async function flowDeleteWallet() {
     showUI();
 
-    const passwordSet = await callWorker('hasPassword');
-    const info = await callWorker('getWebAuthnInfo');
+    setUI(renderDeleteConfirm());
 
-    if (passwordSet) {
-        // Has password: use password + DELETE confirmation
-        setUI(renderDeleteConfirm({ showPassword: true }));
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#delete-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const confirmText = ui.querySelector('#confirm-text').value;
+        const errorEl = ui.querySelector('#error');
 
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-        ui.querySelector('#delete-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const pw = ui.querySelector('#password').value;
-            const confirmText = ui.querySelector('#confirm-text').value;
-            const errorEl = ui.querySelector('#error');
+        if (confirmText !== 'LOGOUT') { showError(errorEl, 'Please type LOGOUT to confirm.'); return; }
 
-            if (confirmText !== 'DELETE') { showError(errorEl, 'Please type DELETE to confirm.'); return; }
-            if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
-
-            const btn = ui.querySelector('#btn-submit');
-            setButtonState(btn, 'Deleting...', true);
-            try {
-                const valid = await callWorker('verifyPassword', { password: pw });
-                ui.querySelector('#password').value = '';
-                if (!valid) {
-                    setButtonState(btn, 'Delete Wallet', false);
-                    showError(errorEl, 'Wrong password.');
-                    return;
-                }
-                await callWorker('deleteWallet');
-                resolveSession({ success: true });
-            } catch (err) {
-                ui.querySelector('#password').value = '';
-                setButtonState(btn, 'Delete Wallet', false);
-                showError(errorEl, 'Failed to delete wallet.');
-            }
-        });
-    } else if (info.hasWebAuthn) {
-        // Passkey only: passkey verification + DELETE confirmation
-        setUI(renderDeleteConfirm({ showPassword: false }));
-
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-        ui.querySelector('#delete-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const confirmText = ui.querySelector('#confirm-text').value;
-            const errorEl = ui.querySelector('#error');
-
-            if (confirmText !== 'DELETE') { showError(errorEl, 'Please type DELETE to confirm.'); return; }
-
-            const btn = ui.querySelector('#btn-submit');
-            setButtonState(btn, 'Authenticating...', true);
-
-            try {
-                // Verify identity via passkey
-                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-                // Attempt decryption to verify the passkey is valid
-                await callWorker('exportMnemonic', { prfKey: Array.from(prfKey) });
-                prfKey.fill(0);
-
-                setButtonState(btn, 'Deleting...', true);
-                await callWorker('deleteWallet');
-                resolveSession({ success: true });
-            } catch (err) {
-                setButtonState(btn, 'Delete Wallet', false);
-                if (err.name === 'NotAllowedError') {
-                    showError(errorEl, 'Authentication cancelled.');
-                } else {
-                    showError(errorEl, 'Failed to delete wallet.');
-                }
-            }
-        });
-    } else {
-        rejectSession('No authentication method available');
-    }
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Logging out...', true);
+        try {
+            await callWorker('deleteWallet');
+            resolveSession({ success: true });
+        } catch (err) {
+            setButtonState(btn, 'Log Out', false);
+            showError(errorEl, 'Failed to log out.');
+        }
+    });
 }
 
 // ── Settings: WebAuthn management flows ───────────────────────────────────

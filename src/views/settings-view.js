@@ -44,8 +44,8 @@ export function settingsView() {
 
                 <div class="settings-section danger-section">
                     <h2 class="nq-label">Danger Zone</h2>
-                    <button class="nq-button-s red" id="btn-logout">Logout &amp; Delete Wallet</button>
-                    <p class="nq-text danger-text">This removes your wallet from this device. If you set up a passkey, an encrypted backup is kept so you can log back in. Make sure you have your recovery words backed up!</p>
+                    <button class="nq-button-s red" id="btn-logout">Log Out</button>
+                    <p class="nq-text danger-text">This removes your wallet from this device. If you set up a passkey, you can log back in with it. Make sure you have your recovery words backed up!</p>
                     <p class="nq-text error-text" id="logout-error" style="display: none; margin-top: 8px;"></p>
                 </div>
             </div>
@@ -97,7 +97,7 @@ export function settingsView() {
         }
     });
 
-    // Delete wallet — keyguard handles password + DELETE confirmation
+    // Log out — keyguard handles LOGOUT text confirmation
     el.querySelector('#btn-logout').addEventListener('click', async () => {
         const btn = el.querySelector('#btn-logout');
         const errorEl = el.querySelector('#logout-error');
@@ -112,11 +112,11 @@ export function settingsView() {
             navigate('#welcome');
         } catch (e) {
             if (e.message !== 'User cancelled') {
-                errorEl.textContent = 'Could not delete wallet. Please try again.';
+                errorEl.textContent = 'Could not log out. Please try again.';
                 errorEl.style.display = '';
             }
             btn.disabled = false;
-            btn.textContent = 'Logout & Delete Wallet';
+            btn.textContent = 'Log Out';
         }
     });
 
