@@ -140,16 +140,31 @@ function deriveAddress(entropy) {
 // passkey restore. Using HKDF avoids treating raw PRF output directly as
 // wallet entropy, which would tightly couple wallet security to the
 // authenticator's PRF implementation quality.
+//
+// An optional per-wallet nonce (stored in the passkey's userHandle) is
+// appended to the HKDF info. This ensures that each wallet creation
+// produces unique entropy even if the platform reuses the same passkey
+// credential (same PRF output). On another device, get() returns the
+// userHandle → same nonce → same wallet.
 
 const HKDF_SALT = new TextEncoder().encode('nimiq-wallet-hkdf-v1');
 const HKDF_INFO = new TextEncoder().encode('cross-device-entropy');
 
-async function deriveEntropyFromPrf(prfKeyBytes) {
+async function deriveEntropyFromPrf(prfKeyBytes, nonce) {
     const ikm = await crypto.subtle.importKey(
         'raw', new Uint8Array(prfKeyBytes), 'HKDF', false, ['deriveBits'],
     );
+    // Include per-wallet nonce in HKDF info when present (new-style wallets).
+    // Old wallets (no nonce) use the base info for backward compatibility.
+    let info = HKDF_INFO;
+    if (nonce && nonce.length > 0) {
+        const combined = new Uint8Array(HKDF_INFO.length + nonce.length);
+        combined.set(HKDF_INFO);
+        combined.set(new Uint8Array(nonce), HKDF_INFO.length);
+        info = combined;
+    }
     const derived = await crypto.subtle.deriveBits(
-        { name: 'HKDF', hash: 'SHA-256', salt: HKDF_SALT, info: HKDF_INFO },
+        { name: 'HKDF', hash: 'SHA-256', salt: HKDF_SALT, info },
         ikm,
         256,
     );
@@ -290,9 +305,9 @@ const handlers = {
         };
     },
 
-    async createWalletFromPrf({ prfKey }) {
+    async createWalletFromPrf({ prfKey, nonce }) {
         await ensureWasm();
-        const derivedBytes = await deriveEntropyFromPrf(prfKey);
+        const derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
         const entropy = new Entropy(derivedBytes);
         derivedBytes.fill(0);
         const mnemonic = MnemonicUtils.entropyToMnemonic(entropy);
@@ -639,7 +654,7 @@ const handlers = {
         };
     },
 
-    async restoreWithPasskey({ prfKey, password, credentialId, prfSalt, fromBackup, allowOverwrite }) {
+    async restoreWithPasskey({ prfKey, password, credentialId, prfSalt, nonce, fromBackup, allowOverwrite }) {
         await ensureWasm();
 
         let entropy;
@@ -667,9 +682,11 @@ const handlers = {
             storedCredentialId = backup.credentialId;
             storedPrfSalt = backup.prfSalt;
         } else {
-            // Cross-device restore: derive entropy from PRF output via HKDF
-            // to avoid using raw authenticator output directly as wallet key material
-            derivedBytes = await deriveEntropyFromPrf(prfKey);
+            // Cross-device restore: derive entropy from PRF output via HKDF.
+            // The nonce (from the passkey's userHandle) is included in the HKDF
+            // info so each wallet creation produces unique entropy even if the
+            // platform reuses the same credential.
+            derivedBytes = await deriveEntropyFromPrf(prfKey, nonce);
             entropy = new Entropy(derivedBytes);
             storedCredentialId = new Uint8Array(credentialId);
             storedPrfSalt = new Uint8Array(prfSalt);

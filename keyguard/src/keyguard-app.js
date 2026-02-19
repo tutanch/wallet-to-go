@@ -523,8 +523,10 @@ async function flowCreateWallet() {
     const prfSupported = await isPrfSupported();
 
     if (prfSupported) {
-        // Offer passkey first — wallet entropy is derived deterministically from
-        // the PRF output, so the same passkey reproduces the same wallet on any device.
+        // Offer passkey — wallet entropy is derived deterministically from
+        // the PRF output + a per-wallet nonce stored in the passkey's
+        // userHandle. Different nonce = different wallet, even if the
+        // platform reuses the same credential.
         setUI(renderWebAuthnPrompt());
 
         ui.querySelector('#btn-skip').onclick = () => {
@@ -539,14 +541,17 @@ async function flowCreateWallet() {
             setButtonState(btn, 'Registering...', true);
 
             try {
-                const userId = crypto.getRandomValues(new Uint8Array(16));
+                // 32-byte userId doubles as the per-wallet nonce for HKDF.
+                // On another device, get() returns this via userHandle.
+                const userId = crypto.getRandomValues(new Uint8Array(32));
                 const { credentialId, prfKey } = await createWebAuthnCredential(
                     userId, nextPasskeyName(), RESTORE_PRF_SALT,
                 );
 
-                // Derive wallet deterministically from PRF output
+                // Derive wallet deterministically from PRF output + nonce
                 const walletData = await callWorker('createWalletFromPrf', {
                     prfKey: Array.from(prfKey),
+                    nonce: Array.from(userId),
                 });
 
                 // Show mnemonic (derived from passkey — same on any device)
@@ -1349,6 +1354,7 @@ async function flowRestoreWithPasskey(args) {
         let prfKey;
         let credentialId;
         let prfSalt;
+        let nonce = null;
         let fromBackup = false;
 
         try {
@@ -1374,10 +1380,16 @@ async function flowRestoreWithPasskey(args) {
                 prfSalt = backup.prfSalt;
                 fromBackup = true;
             } else {
-                // Different credential or no backup — derive wallet from PRF
+                // Different credential or no backup — derive wallet from PRF.
+                // Use the userHandle (set as userId during create) as the
+                // per-wallet nonce for HKDF derivation. New-style wallets
+                // use 32-byte userHandles; old-style used 16-byte (no nonce).
                 prfKey = result.prfKey;
                 credentialId = result.credentialId;
                 prfSalt = RESTORE_PRF_SALT;
+                if (result.userHandle && result.userHandle.length === 32) {
+                    nonce = result.userHandle;
+                }
             }
         } catch (err) {
             setButtonState(btn, 'Authenticate', false);
@@ -1398,6 +1410,7 @@ async function flowRestoreWithPasskey(args) {
                 prfKey: Array.from(prfKey),
                 credentialId: Array.from(new Uint8Array(credentialId)),
                 prfSalt: Array.from(new Uint8Array(prfSalt)),
+                nonce,
                 fromBackup,
                 allowOverwrite: !!args.allowOverwrite,
             });

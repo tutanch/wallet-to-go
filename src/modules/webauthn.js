@@ -59,19 +59,19 @@ async function createCredential({ userId, userName, prfSalt }) {
         throw new Error('PRF_NOT_SUPPORTED');
     }
 
-    let prfOutput = extResults.prf?.results?.first;
-    if (!prfOutput) {
-        // Some authenticators only return PRF output on get(), not create()
-        prfOutput = await getPrfKey({
-            credentialId: Array.from(new Uint8Array(credential.rawId)),
-            prfSalt,
-        });
-        prfOutput = new Uint8Array(prfOutput).buffer;
-    }
+    // ALWAYS use get() for the PRF output, even if create() returned one.
+    // The PRF output from create() can differ from get() on some platforms
+    // (different internal computation contexts), which breaks cross-device
+    // deterministic wallet derivation. Using get() here ensures the same
+    // value is produced during creation as during future logins.
+    const prfOutput = await getPrfKey({
+        credentialId: Array.from(new Uint8Array(credential.rawId)),
+        prfSalt,
+    });
 
     return {
         credentialId: Array.from(new Uint8Array(credential.rawId)),
-        prfKey: Array.from(new Uint8Array(prfOutput)),
+        prfKey: prfOutput, // already Array.from() in getPrfKey
     };
 }
 
@@ -121,6 +121,13 @@ async function getDiscoverablePrfKey(prfSalt, secondPrfSalt) {
         prfKey: Array.from(new Uint8Array(prfResult)),
         credentialId: Array.from(new Uint8Array(assertion.rawId)),
     };
+    // Return the userHandle (= userId set during create). New-style wallets
+    // store a 32-byte nonce here that's used in HKDF derivation so each
+    // wallet creation is unique even if the platform reuses the credential.
+    const uh = assertion.response.userHandle;
+    if (uh && uh.byteLength > 0) {
+        result.userHandle = Array.from(new Uint8Array(uh));
+    }
     const prfSecond = extResults.prf?.results?.second;
     if (prfSecond) result.prfKeySecond = Array.from(new Uint8Array(prfSecond));
     return result;
