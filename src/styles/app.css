@@ -956,26 +956,30 @@ body {
 
 /* ---- Batch Send view ---- */
 .batch-summary {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     gap: 8px;
     margin: 16px 0;
 }
 
 .batch-summary-item {
     flex: 1;
-    min-width: 70px;
+    min-width: 0;
     padding: 10px 6px;
     background: var(--color-bg-hover);
     border-radius: 8px;
     text-align: center;
+    overflow: hidden;
 }
 
 .batch-summary-item .num {
-    font-size: 16px;
+    font-size: clamp(11px, 2.5vw, 16px);
     font-weight: 700;
     color: var(--color-text);
     font-family: 'Fira Mono', monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .batch-summary-item .lbl {
