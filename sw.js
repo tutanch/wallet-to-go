@@ -1,12 +1,12 @@
 // AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
-// Generated from git SHA: 1257d76
+// Generated from git SHA: 4e9228f
 //
 // Security guarantee: if any file on the server has a different hash than
 // what is listed here, the SW install fails and the previous known-good SW
 // continues serving users. Tampered files cannot reach returning visitors.
 
-const CACHE_NAME = 'nimiq-wallet-v1257d76';
+const CACHE_NAME = 'nimiq-wallet-v4e9228f';
 
 // SHA-256 hashes of every file. Computed at deploy time.
 const FILE_HASHES = {
@@ -41,7 +41,7 @@ const FILE_HASHES = {
     "src/views/batch-send-view.js": "sha256-UP9sIF1S72+fR+EwFZNJb1qh+AOPK4iAbL8rU62kIqo=",
     "src/views/create-view.js": "sha256-D1RaBIoMNxhlJlGFN+LQepngZ3nyAOn/d1NojyA/Nj4=",
     "src/views/dashboard-view.js": "sha256-1Z9tbq3rxnRH5GwRsj+3GgTxGkERqXkyQ4svssYPR68=",
-    "src/views/history-view.js": "sha256-eZN7532KwA2Fs3qwNV8yvQzzWxtdIpOZ2DRQsh5vF9A=",
+    "src/views/history-view.js": "sha256-KoXN/ik/vkEVowYfDuOiodQp70y/9+BfGZuuk9ZDBaU=",
     "src/views/import-view.js": "sha256-WoebbUMOUo5vN1hr9KuZErV1S5/mb3nNVxE1W71S7hQ=",
     "src/views/lock-view.js": "sha256-Y5fm53s9Bt6Uc6+M+Nju+SJOxKo/1Up9dGr79v7h3BQ=",
     "src/views/receive-view.js": "sha256-/EKIYFNW11Lp1gNyL5w+Hz/EPuCnH7RjIxKE6iiFtBQ=",

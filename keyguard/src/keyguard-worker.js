@@ -663,6 +663,19 @@ const handlers = {
 
         try {
             const address = deriveAddress(entropy);
+
+            // Safety check: if a wallet already exists with a DIFFERENT address,
+            // refuse to overwrite it. Prevents the lock screen from silently
+            // replacing the user's wallet when they pick the wrong passkey.
+            const existing = await getRecord();
+            if (existing) {
+                const existingAddr = Address.fromAny(existing.defaultAddress).toUserFriendlyAddress();
+                const newAddr = address.toUserFriendlyAddress();
+                if (existingAddr !== newAddr) {
+                    throw new Error('This passkey is associated with a different wallet. Use "Use a different wallet" to switch.');
+                }
+            }
+
             const walletId = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
             const record = {
