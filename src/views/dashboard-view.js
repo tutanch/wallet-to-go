@@ -134,14 +134,14 @@ export async function dashboardView() {
                     <span class="balance-amount nq-h1" id="d-balance">...</span>
                     <span class="balance-currency">NIM</span>
                 </div>
-                <div class="address-switcher">
-                    <button class="addr-nav-btn" id="btn-addr-prev" ${hasMultiple ? '' : 'style="visibility:hidden;"'}>&lsaquo;</button>
+                <div class="address-row">
                     <div class="address-display" id="address-copy" title="Click to copy">
                         <span class="address-text" id="d-address"></span>
                         ${hasMultiple ? '<span class="address-idx" id="d-addr-idx"></span>' : ''}
                     </div>
-                    <button class="addr-nav-btn" id="btn-addr-next" ${hasMultiple ? '' : 'style="visibility:hidden;"'}>&rsaquo;</button>
+                    ${hasMultiple ? '<button class="addr-picker-btn" id="btn-addr-picker" title="Switch address">&#9662;</button>' : ''}
                 </div>
+                <div class="addr-picker-dropdown" id="addr-picker" style="display:none;"></div>
             </div>
             <div class="nq-card-body">
                 <div class="action-buttons">
@@ -172,6 +172,8 @@ export async function dashboardView() {
     const $addrIdx = el.querySelector('#d-addr-idx');
     const $txList = el.querySelector('#d-tx-list');
     const $btnAllTxs = el.querySelector('#btn-all-txs');
+    const $picker = el.querySelector('#addr-picker');
+    const $pickerBtn = el.querySelector('#btn-addr-picker');
 
     function renderAddress() {
         $address.textContent = currentAddress;
@@ -179,10 +181,25 @@ export async function dashboardView() {
     }
     renderAddress();
 
-    // Address switching
-    function switchToAddress(newIdx) {
-        if (newIdx < 0) newIdx = allAddresses.length - 1;
-        if (newIdx >= allAddresses.length) newIdx = 0;
+    // ── Address picker ────────────────────────────────────────
+    let pickerOpen = false;
+
+    function closePicker() {
+        if (!pickerOpen) return;
+        pickerOpen = false;
+        $picker.style.display = 'none';
+        if ($pickerBtn) $pickerBtn.classList.remove('open');
+        document.removeEventListener('click', onOutsideClick, true);
+    }
+
+    function onOutsideClick(e) {
+        if ($picker.contains(e.target) || ($pickerBtn && $pickerBtn.contains(e.target))) return;
+        closePicker();
+    }
+
+    function selectAddress(newIdx) {
+        closePicker();
+        if (newIdx === activeIdx) return;
         activeIdx = newIdx;
         currentAddress = allAddresses[activeIdx].address;
         setActiveAddressIndex(activeIdx);
@@ -191,14 +208,75 @@ export async function dashboardView() {
         update();
     }
 
-    el.querySelector('#btn-addr-prev').addEventListener('click', (e) => {
-        e.stopPropagation();
-        switchToAddress(activeIdx - 1);
-    });
-    el.querySelector('#btn-addr-next').addEventListener('click', (e) => {
-        e.stopPropagation();
-        switchToAddress(activeIdx + 1);
-    });
+    function buildPickerRows(balances) {
+        $picker.innerHTML = '';
+        for (const entry of allAddresses) {
+            const row = document.createElement('button');
+            row.className = 'addr-picker-row' + (entry.index === activeIdx ? ' active' : '');
+            row.type = 'button';
+
+            const idxSpan = document.createElement('span');
+            idxSpan.className = 'addr-picker-idx';
+            idxSpan.textContent = `#${entry.index + 1}`;
+
+            const details = document.createElement('span');
+            details.className = 'addr-picker-details';
+
+            const addrSpan = document.createElement('span');
+            addrSpan.className = 'addr-picker-addr';
+            const a = entry.address;
+            addrSpan.textContent = a.substring(0, 9) + '...' + a.substring(a.length - 4);
+
+            details.appendChild(addrSpan);
+
+            if (balances && balances[entry.address] !== undefined) {
+                const balSpan = document.createElement('span');
+                balSpan.className = 'addr-picker-bal';
+                balSpan.textContent = formatNim(balances[entry.address]) + ' NIM';
+                details.appendChild(balSpan);
+            }
+
+            row.appendChild(idxSpan);
+            row.appendChild(details);
+
+            row.addEventListener('click', () => selectAddress(entry.index));
+            $picker.appendChild(row);
+        }
+    }
+
+    async function openPicker() {
+        if (pickerOpen) { closePicker(); return; }
+        pickerOpen = true;
+        $picker.style.display = '';
+        if ($pickerBtn) $pickerBtn.classList.add('open');
+
+        // Show immediately without balances
+        buildPickerRows(null);
+
+        // Then fetch balances and re-render
+        setTimeout(() => document.addEventListener('click', onOutsideClick, true), 0);
+
+        try {
+            const hasConsensus = await network.isConsensusEstablished();
+            if (hasConsensus) {
+                const client = await network.getClient();
+                const addrs = allAddresses.map(a => a.address);
+                const accounts = await client.getAccounts(addrs);
+                const balances = {};
+                for (let i = 0; i < addrs.length; i++) {
+                    balances[addrs[i]] = accounts[i] ? Number(accounts[i].balance) : 0;
+                }
+                if (pickerOpen) buildPickerRows(balances);
+            }
+        } catch (_) {}
+    }
+
+    if ($pickerBtn) {
+        $pickerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openPicker();
+        });
+    }
 
     el.querySelector('#address-copy').addEventListener('click', async () => {
         try {
@@ -257,6 +335,9 @@ export async function dashboardView() {
 
     return {
         element: el,
-        cleanup: () => { viewUpdate = null; },
+        cleanup: () => {
+            viewUpdate = null;
+            closePicker();
+        },
     };
 }

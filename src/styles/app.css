@@ -423,6 +423,7 @@ body {
 /* ---- Dashboard ---- */
 .dashboard-card .nq-card-header {
     text-align: center;
+    position: relative;
 }
 
 .status-bar {
@@ -547,42 +548,18 @@ body {
     color: #1F2348;
 }
 
-/* Address switcher (dashboard) */
-.address-switcher {
+/* Address row with picker (dashboard) */
+.address-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
-.address-switcher .address-display {
+.address-row .address-display {
     flex: 1;
     min-width: 0;
     flex-direction: column;
     gap: 2px;
-}
-
-.addr-nav-btn {
-    width: 36px;
-    height: 36px;
-    border: 1px solid rgba(31, 35, 72, 0.15);
-    border-radius: 50%;
-    background: rgba(31, 35, 72, 0.05);
-    color: #1F2348;
-    font-size: 20px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: background 0.15s;
-    line-height: 1;
-    padding: 0;
-    font-family: inherit;
-}
-
-.addr-nav-btn:hover {
-    background: rgba(31, 35, 72, 0.1);
 }
 
 .address-idx {
@@ -590,6 +567,107 @@ body {
     color: rgba(31, 35, 72, 0.45);
     font-weight: 600;
     text-align: center;
+    margin-top: 2px;
+}
+
+/* Picker trigger button */
+.addr-picker-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(31, 35, 72, 0.15);
+    border-radius: 50%;
+    background: rgba(31, 35, 72, 0.05);
+    color: rgba(31, 35, 72, 0.6);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.2s;
+    padding: 0;
+    font-family: inherit;
+}
+
+.addr-picker-btn:hover {
+    background: rgba(31, 35, 72, 0.1);
+}
+
+.addr-picker-btn.open {
+    transform: rotate(180deg);
+}
+
+/* Picker dropdown */
+.addr-picker-dropdown {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    margin-top: 4px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14), 0 1px 4px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    overflow: hidden;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.addr-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+    font-family: inherit;
+}
+
+.addr-picker-row:hover {
+    background: rgba(31, 35, 72, 0.05);
+}
+
+.addr-picker-row.active {
+    background: rgba(5, 130, 202, 0.08);
+}
+
+.addr-picker-row + .addr-picker-row {
+    border-top: 1px solid rgba(31, 35, 72, 0.06);
+}
+
+.addr-picker-idx {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(31, 35, 72, 0.45);
+    min-width: 28px;
+    flex-shrink: 0;
+}
+
+.addr-picker-details {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 1;
+}
+
+.addr-picker-addr {
+    font-family: 'Fira Mono', monospace;
+    font-size: 12px;
+    color: rgba(31, 35, 72, 0.7);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.addr-picker-bal {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(31, 35, 72, 0.5);
+    font-family: 'Fira Mono', monospace;
 }
 
 /* ---- Action buttons ---- */
