@@ -145,7 +145,7 @@ function showGesturePrompt(isCreate) {
         title.textContent = isCreate ? 'Register Passkey' : 'Authenticate';
 
         const desc = document.createElement('p');
-        desc.style.cssText = 'font-size:14px;color:rgba(31,35,72,0.6);margin-bottom:20px;line-height:1.4;';
+        desc.style.cssText = 'font-size:14px;color:rgba(31,35,72,0.7);margin-bottom:20px;line-height:1.4;';
         desc.textContent = isCreate
             ? 'Click the button below, then follow your browser\'s prompt to register your biometric or passkey.'
             : 'Click the button below, then use your fingerprint, face, or device PIN to authenticate.';

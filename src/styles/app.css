@@ -68,7 +68,7 @@ html {
 .nq-button[disabled] {
     background: rgba(31, 35, 72, 0.07);
     background-image: none;
-    color: rgba(31, 35, 72, 0.3);
+    color: rgba(31, 35, 72, 0.5);
     box-shadow: none;
 }
 
@@ -96,7 +96,7 @@ html {
 }
 
 .nq-input::placeholder {
-    color: rgba(31, 35, 72, 0.5);
+    color: rgba(31, 35, 72, 0.6);
 }
 
 /* Base typography */
@@ -124,7 +124,7 @@ html {
 }
 
 .nq-link {
-    color: #0582CA;
+    color: #0471B0;
     text-decoration: none;
     cursor: pointer;
 }
@@ -187,20 +187,20 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: rgba(31, 35, 72, 0.5);
+    color: rgba(31, 35, 72, 0.6);
     margin-bottom: 4px;
 }
 
 .nq-card .nq-text {
     font-size: 15px;
     line-height: 1.4;
-    color: rgba(31, 35, 72, 0.6);
+    color: rgba(31, 35, 72, 0.7);
     margin: 0;
 }
 
 .nq-card .nq-link {
     font-size: 13px;
-    color: #0582CA;
+    color: #0471B0;
     text-decoration: none;
     cursor: pointer;
 }
@@ -258,7 +258,7 @@ body {
 }
 
 .nq-card .nq-input::placeholder {
-    color: rgba(31, 35, 72, 0.35);
+    color: rgba(31, 35, 72, 0.55);
 }
 
 .nq-card .nq-input:focus {
@@ -377,14 +377,14 @@ body {
 }
 
 .success-text {
-    color: #21bca5;
+    color: #1A9882;
     font-weight: bold;
 }
 
 .tx-hash {
     font-family: 'Fira Mono', monospace;
     font-size: 12px;
-    color: #888;
+    color: #6B6B6B;
     word-break: break-all;
 }
 
@@ -408,7 +408,7 @@ body {
 }
 
 .word-number {
-    color: rgba(31, 35, 72, 0.35);
+    color: rgba(31, 35, 72, 0.55);
     font-size: 11px;
     min-width: 20px;
     font-weight: 600;
@@ -466,7 +466,7 @@ body {
 }
 
 .network-label {
-    color: rgba(31, 35, 72, 0.4);
+    color: rgba(31, 35, 72, 0.55);
     text-transform: uppercase;
     font-size: 11px;
     letter-spacing: 0.5px;
@@ -474,7 +474,7 @@ body {
 }
 
 .block-height {
-    color: rgba(31, 35, 72, 0.35);
+    color: rgba(31, 35, 72, 0.55);
     font-size: 11px;
     font-family: 'Fira Mono', monospace;
 }
@@ -496,7 +496,7 @@ body {
 
 .balance-currency {
     font-size: 14px;
-    color: rgba(31, 35, 72, 0.4);
+    color: rgba(31, 35, 72, 0.55);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -583,14 +583,14 @@ body {
 
 .no-txs {
     text-align: center;
-    color: rgba(31, 35, 72, 0.35);
+    color: rgba(31, 35, 72, 0.55);
     padding: 24px 0;
     font-size: 14px;
 }
 
 .loading-text {
     text-align: center;
-    color: rgba(31, 35, 72, 0.35);
+    color: rgba(31, 35, 72, 0.55);
     padding: 24px 0;
     font-size: 14px;
 }
@@ -656,7 +656,7 @@ body {
 
 .tx-time {
     font-size: 11px;
-    color: rgba(31, 35, 72, 0.35);
+    color: rgba(31, 35, 72, 0.55);
 }
 
 .tx-amount {
@@ -671,7 +671,7 @@ body {
 }
 
 .amount-received {
-    color: #21bca5;
+    color: #1A9882;
 }
 
 /* ---- Receive view ---- */
@@ -725,7 +725,7 @@ body {
 
 .danger-text {
     font-size: 12px;
-    color: rgba(31, 35, 72, 0.4);
+    color: rgba(31, 35, 72, 0.55);
     margin-top: 8px;
 }
 
@@ -776,7 +776,7 @@ body {
 
 .batch-summary-item .lbl {
     font-size: 10px;
-    color: rgba(31, 35, 72, 0.5);
+    color: rgba(31, 35, 72, 0.6);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-top: 2px;
@@ -803,7 +803,7 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: rgba(31, 35, 72, 0.5);
+    color: rgba(31, 35, 72, 0.6);
     border-bottom: 1px solid rgba(31, 35, 72, 0.08);
     position: sticky;
     top: 0;
@@ -828,17 +828,17 @@ body {
 
 .batch-badge-pending {
     background: rgba(31, 35, 72, 0.08);
-    color: rgba(31, 35, 72, 0.5);
+    color: rgba(31, 35, 72, 0.6);
 }
 
 .batch-badge-sending {
     background: rgba(5, 130, 202, 0.1);
-    color: #0582CA;
+    color: #0471B0;
 }
 
 .batch-badge-sent {
     background: rgba(33, 188, 165, 0.1);
-    color: #21BCA5;
+    color: #1A9882;
 }
 
 .batch-badge-failed {
@@ -865,7 +865,7 @@ body {
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
-    color: rgba(31, 35, 72, 0.6);
+    color: rgba(31, 35, 72, 0.7);
     transition: border-color 0.2s, background 0.2s;
 }
 

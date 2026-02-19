@@ -12,8 +12,8 @@
     --nq-gold: #E9B213;
     --nq-bg: #1F2348;
     --text-primary: #1F2348;
-    --text-secondary: rgba(31, 35, 72, 0.6);
-    --text-hint: rgba(31, 35, 72, 0.35);
+    --text-secondary: rgba(31, 35, 72, 0.7);
+    --text-hint: rgba(31, 35, 72, 0.55);
     --border-color: rgba(31, 35, 72, 0.15);
     --bg-subtle: rgba(31, 35, 72, 0.05);
 }
