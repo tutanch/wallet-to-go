@@ -65,7 +65,7 @@ export function renderTxItem(tx, ownAddress) {
         : 'Unknown';
 
     const timestamp = tx.timestamp
-        ? new Date(tx.timestamp * 1000).toLocaleString()
+        ? new Date(tx.timestamp).toLocaleString()
         : 'Pending';
 
     const stateStr = tx.state === 'confirmed' ? '' : ` (${tx.state || 'pending'})`;
