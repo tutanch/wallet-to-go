@@ -136,6 +136,18 @@ function escHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
+const FINGERPRINT_SVG = `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
+    <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
+    <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
+    <path d="M2 12a10 10 0 0 1 18-6"/>
+    <path d="M2 16h.01"/>
+    <path d="M21.8 16c.2-2 .131-5.354 0-6"/>
+    <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
+    <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
+    <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
+</svg>`;
+
 function showError(el, msg) {
     el.textContent = msg;
     el.style.display = '';
@@ -354,7 +366,26 @@ function renderWordEntry() {
         </div>`;
 }
 
-function renderTxConfirm({ amount, recipient, message, fee }) {
+function renderTxConfirm({ amount, recipient, message, fee, biometric, showPassword }) {
+    const biometricSection = biometric ? `
+        <div class="biometric-auth-section">
+            <button id="btn-biometric" type="button" class="biometric-trigger">
+                ${FINGERPRINT_SVG}
+                <span class="biometric-hint">Tap to sign</span>
+            </button>
+            <p class="error-text" id="error" style="display:none;"></p>
+        </div>` : '';
+
+    const footer = biometric ? `
+        <div class="keyguard-footer">
+            <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+            ${showPassword ? '<button id="btn-password" type="button" class="btn-secondary">Use Password</button>' : ''}
+        </div>` : `
+        <div class="keyguard-footer">
+            <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+            <button id="btn-confirm" type="button" class="btn-primary">Confirm &amp; Sign</button>
+        </div>`;
+
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
@@ -376,16 +407,33 @@ function renderTxConfirm({ amount, recipient, message, fee }) {
                         <span class="tx-label">Fee</span>
                         <span class="tx-value">${escHtml(String(fee))} luna</span>
                     </div>
+                    ${biometricSection}
                 </div>
-                <div class="keyguard-footer">
-                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
-                    <button id="btn-confirm" type="button" class="btn-primary">Confirm &amp; Sign</button>
-                </div>
+                ${footer}
             </div>
         </div>`;
 }
 
-function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees, totalCost }) {
+function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees, totalCost, biometric, showPassword }) {
+    const biometricSection = biometric ? `
+        <div class="biometric-auth-section">
+            <button id="btn-biometric" type="button" class="biometric-trigger">
+                ${FINGERPRINT_SVG}
+                <span class="biometric-hint">Tap to sign</span>
+            </button>
+            <p class="error-text" id="error" style="display:none;"></p>
+        </div>` : '';
+
+    const footer = biometric ? `
+        <div class="keyguard-footer">
+            <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+            ${showPassword ? '<button id="btn-password" type="button" class="btn-secondary">Use Password</button>' : ''}
+        </div>` : `
+        <div class="keyguard-footer">
+            <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+            <button id="btn-confirm" type="button" class="btn-primary">Confirm &amp; Sign All</button>
+        </div>`;
+
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
@@ -410,11 +458,9 @@ function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees,
                         <span class="tx-label">Total Fees</span>
                         <span class="tx-value">${escHtml(totalFees)}</span>
                     </div>
+                    ${biometricSection}
                 </div>
-                <div class="keyguard-footer">
-                    <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
-                    <button id="btn-confirm" type="button" class="btn-primary">Confirm &amp; Sign All</button>
-                </div>
+                ${footer}
             </div>
         </div>`;
 }
@@ -604,7 +650,7 @@ function renderWebAuthnPrompt() {
         </div>`;
 }
 
-function renderUnlockChoice(title, subtitle) {
+function renderBiometricAuth(title, subtitle, showPassword) {
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
@@ -612,17 +658,16 @@ function renderUnlockChoice(title, subtitle) {
                     <h1>${escHtml(title)}</h1>
                     ${subtitle ? `<p>${escHtml(subtitle)}</p>` : ''}
                 </div>
-                <div class="keyguard-body unlock-choice-body">
-                    <button id="btn-biometric" type="button" class="btn-primary unlock-choice-btn">
-                        Use Biometric / Passkey
-                    </button>
-                    <button id="btn-password" type="button" class="btn-secondary unlock-choice-btn">
-                        Use Password
+                <div class="keyguard-body biometric-auth-body">
+                    <button id="btn-biometric" type="button" class="biometric-trigger">
+                        ${FINGERPRINT_SVG}
+                        <span class="biometric-hint">Tap to authenticate</span>
                     </button>
                     <p class="error-text" id="error" style="display:none;"></p>
                 </div>
                 <div class="keyguard-footer">
                     <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                    ${showPassword ? '<button id="btn-password" type="button" class="btn-secondary">Use Password</button>' : ''}
                 </div>
             </div>
         </div>`;
@@ -987,84 +1032,47 @@ async function flowSignTransaction(args) {
     const formattedAmount = formatLuna(args.value);
     const truncatedRecipient = formatAddress(args.recipientAddress);
 
-    // Step 1: TX confirmation screen
-    setUI(renderTxConfirm({
-        amount: formattedAmount,
-        recipient: truncatedRecipient,
-        message: args.message || '',
-        fee: args.fee,
-    }));
+    // Check auth methods first so we can render the right UI
+    const info = await callWorker('getWebAuthnInfo');
+    const passwordSet = await callWorker('hasPassword');
+
+    if (info.hasWebAuthn) {
+        // Single screen: TX details + fingerprint auth
+        setUI(renderTxConfirm({
+            amount: formattedAmount,
+            recipient: truncatedRecipient,
+            message: args.message || '',
+            fee: args.fee,
+            biometric: true,
+            showPassword: passwordSet,
+        }));
+
+        wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRecipient);
+    } else {
+        // Password only: TX confirm → password form
+        setUI(renderTxConfirm({
+            amount: formattedAmount,
+            recipient: truncatedRecipient,
+            message: args.message || '',
+            fee: args.fee,
+        }));
+
+        ui.querySelector('#btn-confirm').onclick = () => {
+            setUI('');
+            showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
+        };
+    }
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-confirm').onclick = async () => {
-        setUI('');
-
-        // Check which auth methods are configured
-        const info = await callWorker('getWebAuthnInfo');
-        const passwordSet = await callWorker('hasPassword');
-
-        if (info.hasWebAuthn && passwordSet) {
-            // Both methods available: offer choice
-            setUI(renderUnlockChoice(
-                'Authenticate to Sign',
-                `Sending ${formattedAmount} to ${truncatedRecipient}`,
-            ));
-
-            ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-
-            ui.querySelector('#btn-biometric').onclick = async () => {
-                const btn = ui.querySelector('#btn-biometric');
-                const errorEl = ui.querySelector('#error');
-                setButtonState(btn, 'Authenticating...', true);
-
-                try {
-                    const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-                    const { serializedTx } = await callWorker('signTransaction', {
-                        ...args, prfKey: Array.from(prfKey),
-                    });
-                    prfKey.fill(0);
-                    resolveSession({ serializedTx }, [serializedTx.buffer]);
-                } catch (err) {
-                    setButtonState(btn, 'Use Biometric / Passkey', false);
-                    if (err.name === 'NotAllowedError') {
-                        showError(errorEl, 'Authentication cancelled. Try again or use password.');
-                    } else {
-                        showError(errorEl, 'Biometric failed. Try again or use password.');
-                    }
-                }
-            };
-
-            ui.querySelector('#btn-password').onclick = () => {
-                setUI('');
-                showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
-            };
-        } else if (info.hasWebAuthn) {
-            // Passkey only: go straight to biometric
-            showBiometricForSign(args, info, formattedAmount, truncatedRecipient);
-        } else {
-            // Password only: go straight to password
-            showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
-        }
-    };
 }
 
-function showBiometricForSign(args, info, formattedAmount, truncatedRecipient) {
-    setUI(renderUnlockChoice(
-        'Authenticate to Sign',
-        `Sending ${formattedAmount} to ${truncatedRecipient}`,
-    ));
+function wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRecipient) {
+    const biometricBtn = ui.querySelector('#btn-biometric');
+    const errorEl = ui.querySelector('#error');
 
-    // Hide the password button for passkey-only wallets
-    const pwBtn = ui.querySelector('#btn-password');
-    if (pwBtn) pwBtn.style.display = 'none';
-
-    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-
-    ui.querySelector('#btn-biometric').onclick = async () => {
-        const btn = ui.querySelector('#btn-biometric');
-        const errorEl = ui.querySelector('#error');
-        setButtonState(btn, 'Authenticating...', true);
-
+    biometricBtn.onclick = async () => {
+        biometricBtn.disabled = true;
+        biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
         try {
             const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
             const { serializedTx } = await callWorker('signTransaction', {
@@ -1073,14 +1081,20 @@ function showBiometricForSign(args, info, formattedAmount, truncatedRecipient) {
             prfKey.fill(0);
             resolveSession({ serializedTx }, [serializedTx.buffer]);
         } catch (err) {
-            setButtonState(btn, 'Use Biometric / Passkey', false);
-            if (err.name === 'NotAllowedError') {
-                showError(errorEl, 'Authentication cancelled. Try again.');
-            } else {
-                showError(errorEl, 'Biometric failed. Try again.');
-            }
+            biometricBtn.disabled = false;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
+            showError(errorEl, err.name === 'NotAllowedError'
+                ? 'Cancelled. Tap to try again.'
+                : 'Failed. Tap to try again.');
         }
     };
+
+    if (passwordSet) {
+        ui.querySelector('#btn-password').onclick = () => {
+            setUI('');
+            showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
+        };
+    }
 }
 
 // ── Batch transaction signing flow ───────────────────────────────────────
@@ -1103,61 +1117,64 @@ async function flowSignBatchTransaction(args) {
     const totalAmount = formatLuna(sumAmount);
     const totalFees = formatLuna(totalFee);
 
-    setUI(renderBatchTxConfirm({
-        recipientCount: count,
-        totalAmount,
-        feeEach,
-        totalFees,
-        totalCost,
-    }));
+    const info = await callWorker('getWebAuthnInfo');
+    const passwordSet = await callWorker('hasPassword');
+    const subtitle = `Batch: ${count} transactions, ${totalAmount} total`;
+
+    if (info.hasWebAuthn) {
+        setUI(renderBatchTxConfirm({
+            recipientCount: count,
+            totalAmount, feeEach, totalFees, totalCost,
+            biometric: true,
+            showPassword: passwordSet,
+        }));
+
+        wireBiometricBatchSign(info, passwordSet, args, subtitle);
+    } else {
+        setUI(renderBatchTxConfirm({
+            recipientCount: count,
+            totalAmount, feeEach, totalFees, totalCost,
+        }));
+
+        ui.querySelector('#btn-confirm').onclick = () => {
+            setUI('');
+            showPasswordFormForBatchSign(args, subtitle);
+        };
+    }
 
     ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-    ui.querySelector('#btn-confirm').onclick = async () => {
-        setUI('');
+}
 
-        const info = await callWorker('getWebAuthnInfo');
-        const passwordSet = await callWorker('hasPassword');
+function wireBiometricBatchSign(info, passwordSet, args, subtitle) {
+    const biometricBtn = ui.querySelector('#btn-biometric');
+    const errorEl = ui.querySelector('#error');
 
-        const subtitle = `Batch: ${count} transactions, ${totalAmount} total`;
-
-        if (info.hasWebAuthn && passwordSet) {
-            setUI(renderUnlockChoice('Authenticate to Sign', subtitle));
-
-            ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-
-            ui.querySelector('#btn-biometric').onclick = async () => {
-                const btn = ui.querySelector('#btn-biometric');
-                const errorEl = ui.querySelector('#error');
-                setButtonState(btn, 'Signing...', true);
-
-                try {
-                    const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-                    const { serializedTransactions } = await callWorker('signBatchTransaction', {
-                        ...args, prfKey: Array.from(prfKey),
-                    });
-                    prfKey.fill(0);
-                    const transfer = serializedTransactions.map(tx => tx.buffer);
-                    resolveSession({ serializedTransactions }, transfer);
-                } catch (err) {
-                    setButtonState(btn, 'Use Biometric / Passkey', false);
-                    if (err.name === 'NotAllowedError') {
-                        showError(errorEl, 'Authentication cancelled. Try again or use password.');
-                    } else {
-                        showError(errorEl, 'Signing failed. Try again or use password.');
-                    }
-                }
-            };
-
-            ui.querySelector('#btn-password').onclick = () => {
-                setUI('');
-                showPasswordFormForBatchSign(args, subtitle);
-            };
-        } else if (info.hasWebAuthn) {
-            showBiometricForBatchSign(args, info, subtitle);
-        } else {
-            showPasswordFormForBatchSign(args, subtitle);
+    biometricBtn.onclick = async () => {
+        biometricBtn.disabled = true;
+        biometricBtn.querySelector('.biometric-hint').textContent = 'Signing...';
+        try {
+            const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+            const { serializedTransactions } = await callWorker('signBatchTransaction', {
+                ...args, prfKey: Array.from(prfKey),
+            });
+            prfKey.fill(0);
+            const transfer = serializedTransactions.map(tx => tx.buffer);
+            resolveSession({ serializedTransactions }, transfer);
+        } catch (err) {
+            biometricBtn.disabled = false;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
+            showError(errorEl, err.name === 'NotAllowedError'
+                ? 'Cancelled. Tap to try again.'
+                : 'Signing failed. Tap to try again.');
         }
     };
+
+    if (passwordSet) {
+        ui.querySelector('#btn-password').onclick = () => {
+            setUI('');
+            showPasswordFormForBatchSign(args, subtitle);
+        };
+    }
 }
 
 function showPasswordFormForBatchSign(args, subtitle) {
@@ -1192,38 +1209,6 @@ function showPasswordFormForBatchSign(args, subtitle) {
             showError(ui.querySelector('#error'), msg);
         }
     });
-}
-
-function showBiometricForBatchSign(args, info, subtitle) {
-    setUI(renderUnlockChoice('Authenticate to Sign', subtitle));
-
-    const pwBtn = ui.querySelector('#btn-password');
-    if (pwBtn) pwBtn.style.display = 'none';
-
-    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-
-    ui.querySelector('#btn-biometric').onclick = async () => {
-        const btn = ui.querySelector('#btn-biometric');
-        const errorEl = ui.querySelector('#error');
-        setButtonState(btn, 'Signing...', true);
-
-        try {
-            const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-            const { serializedTransactions } = await callWorker('signBatchTransaction', {
-                ...args, prfKey: Array.from(prfKey),
-            });
-            prfKey.fill(0);
-            const transfer = serializedTransactions.map(tx => tx.buffer);
-            resolveSession({ serializedTransactions }, transfer);
-        } catch (err) {
-            setButtonState(btn, 'Use Biometric / Passkey', false);
-            if (err.name === 'NotAllowedError') {
-                showError(errorEl, 'Authentication cancelled. Try again.');
-            } else {
-                showError(errorEl, 'Signing failed. Try again.');
-            }
-        }
-    };
 }
 
 function showExportedWords(words) {
@@ -1296,24 +1281,23 @@ function showPasswordFormForExport() {
 async function flowExportMnemonic() {
     showUI();
 
-    // Check which auth methods are configured
     const info = await callWorker('getWebAuthnInfo');
     const passwordSet = await callWorker('hasPassword');
 
-    if (info.hasWebAuthn && passwordSet) {
-        // Both methods available: offer choice
-        setUI(renderUnlockChoice(
+    if (info.hasWebAuthn) {
+        // Single screen: fingerprint auth
+        setUI(renderBiometricAuth(
             'Show Recovery Words',
-            'Authenticate to reveal your recovery words.',
+            'Tap to authenticate and reveal your recovery words.',
+            passwordSet,
         ));
 
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+        const biometricBtn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
 
-        ui.querySelector('#btn-biometric').onclick = async () => {
-            const btn = ui.querySelector('#btn-biometric');
-            const errorEl = ui.querySelector('#error');
-            setButtonState(btn, 'Authenticating...', true);
-
+        biometricBtn.onclick = async () => {
+            biometricBtn.disabled = true;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
             try {
                 const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
                 const { words } = await callWorker('exportMnemonic', {
@@ -1323,62 +1307,25 @@ async function flowExportMnemonic() {
                 setUI('');
                 showExportedWords(words);
             } catch (err) {
-                setButtonState(btn, 'Use Biometric / Passkey', false);
-                if (err.name === 'NotAllowedError') {
-                    showError(errorEl, 'Authentication cancelled. Try again or use password.');
-                } else {
-                    showError(errorEl, 'Biometric failed. Try again or use password.');
-                }
+                biometricBtn.disabled = false;
+                biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to authenticate';
+                showError(errorEl, err.name === 'NotAllowedError'
+                    ? 'Cancelled. Tap to try again.'
+                    : 'Failed. Tap to try again.');
             }
         };
 
-        ui.querySelector('#btn-password').onclick = () => {
-            setUI('');
-            showPasswordFormForExport();
-        };
-    } else if (info.hasWebAuthn) {
-        // Passkey only: go straight to biometric
-        showBiometricForExport(info);
+        if (passwordSet) {
+            ui.querySelector('#btn-password').onclick = () => {
+                setUI('');
+                showPasswordFormForExport();
+            };
+        }
+
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
     } else {
-        // Password only: go straight to password
         showPasswordFormForExport();
     }
-}
-
-function showBiometricForExport(info) {
-    setUI(renderUnlockChoice(
-        'Show Recovery Words',
-        'Authenticate to reveal your recovery words.',
-    ));
-
-    // Hide the password button for passkey-only wallets
-    const pwBtn = ui.querySelector('#btn-password');
-    if (pwBtn) pwBtn.style.display = 'none';
-
-    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-
-    ui.querySelector('#btn-biometric').onclick = async () => {
-        const btn = ui.querySelector('#btn-biometric');
-        const errorEl = ui.querySelector('#error');
-        setButtonState(btn, 'Authenticating...', true);
-
-        try {
-            const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-            const { words } = await callWorker('exportMnemonic', {
-                prfKey: Array.from(prfKey),
-            });
-            prfKey.fill(0);
-            setUI('');
-            showExportedWords(words);
-        } catch (err) {
-            setButtonState(btn, 'Use Biometric / Passkey', false);
-            if (err.name === 'NotAllowedError') {
-                showError(errorEl, 'Authentication cancelled. Try again.');
-            } else {
-                showError(errorEl, 'Biometric failed. Try again.');
-            }
-        }
-    };
 }
 
 async function flowDeleteWallet() {
@@ -1790,7 +1737,7 @@ async function flowRemoveWebAuthn() {
 
 // ── Cashlink data encrypt/decrypt ─────────────────────────────────────────
 // Generic auth flow for encrypting or decrypting cashlink run data.
-// Shows passkey/password choice, then calls the specified worker command.
+// Shows fingerprint auth or password form depending on configured methods.
 
 async function flowCashlinkCrypto(args, workerCommand, title) {
     showUI();
@@ -1798,14 +1745,15 @@ async function flowCashlinkCrypto(args, workerCommand, title) {
     const info = await callWorker('getWebAuthnInfo');
     const passwordSet = await callWorker('hasPassword');
 
-    if (info.hasWebAuthn && passwordSet) {
-        setUI(renderUnlockChoice(title, title));
-        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    if (info.hasWebAuthn) {
+        setUI(renderBiometricAuth(title, 'Tap to authenticate.', passwordSet));
 
-        ui.querySelector('#btn-biometric').onclick = async () => {
-            const btn = ui.querySelector('#btn-biometric');
-            const errorEl = ui.querySelector('#error');
-            setButtonState(btn, 'Processing...', true);
+        const biometricBtn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
+
+        biometricBtn.onclick = async () => {
+            biometricBtn.disabled = true;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Processing...';
             try {
                 const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
                 const result = await callWorker(workerCommand, {
@@ -1814,41 +1762,22 @@ async function flowCashlinkCrypto(args, workerCommand, title) {
                 prfKey.fill(0);
                 resolveSession(result);
             } catch (err) {
-                setButtonState(btn, 'Use Biometric / Passkey', false);
+                biometricBtn.disabled = false;
+                biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to authenticate';
                 showError(errorEl, err.name === 'NotAllowedError'
-                    ? 'Authentication cancelled. Try again or use password.'
-                    : 'Failed. Try again or use password.');
+                    ? 'Cancelled. Tap to try again.'
+                    : 'Failed. Tap to try again.');
             }
         };
 
-        ui.querySelector('#btn-password').onclick = () => {
-            setUI('');
-            showPasswordFormForCashlinkCrypto(args, workerCommand, title);
-        };
-    } else if (info.hasWebAuthn) {
-        setUI(renderUnlockChoice(title, title));
-        const pwBtn = ui.querySelector('#btn-password');
-        if (pwBtn) pwBtn.style.display = 'none';
+        if (passwordSet) {
+            ui.querySelector('#btn-password').onclick = () => {
+                setUI('');
+                showPasswordFormForCashlinkCrypto(args, workerCommand, title);
+            };
+        }
+
         ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
-
-        ui.querySelector('#btn-biometric').onclick = async () => {
-            const btn = ui.querySelector('#btn-biometric');
-            const errorEl = ui.querySelector('#error');
-            setButtonState(btn, 'Processing...', true);
-            try {
-                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-                const result = await callWorker(workerCommand, {
-                    ...args, prfKey: Array.from(prfKey),
-                });
-                prfKey.fill(0);
-                resolveSession(result);
-            } catch (err) {
-                setButtonState(btn, 'Use Biometric / Passkey', false);
-                showError(errorEl, err.name === 'NotAllowedError'
-                    ? 'Authentication cancelled. Try again.'
-                    : 'Failed. Try again.');
-            }
-        };
     } else {
         showPasswordFormForCashlinkCrypto(args, workerCommand, title);
     }

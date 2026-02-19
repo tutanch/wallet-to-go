@@ -334,19 +334,69 @@ textarea.nq-input {
     height: 64px;
 }
 
-.unlock-choice-body {
+/* ---- Biometric fingerprint auth ---- */
+.biometric-auth-body {
     display: flex;
     flex-direction: column;
-    align-items: stretch;
+    align-items: center;
+    padding-top: 24px;
+    padding-bottom: 8px;
 }
 
-.unlock-choice-btn {
-    width: 100%;
-    margin-bottom: 12px;
+.biometric-auth-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
 }
 
-.unlock-choice-btn:last-of-type {
-    margin-bottom: 0;
+.biometric-trigger {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 20px;
+    color: #722F37;
+    transition: transform 0.15s;
+    border-radius: 50%;
+}
+
+.biometric-trigger:hover:not(:disabled) {
+    transform: scale(1.08);
+}
+
+.biometric-trigger:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.biometric-trigger svg {
+    animation: fingerprint-pulse 1.8s ease-in-out infinite;
+}
+
+.biometric-trigger:disabled {
+    cursor: default;
+}
+
+.biometric-trigger:disabled svg {
+    animation: none;
+    opacity: 0.4;
+}
+
+.biometric-hint {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: inherit;
+}
+
+@keyframes fingerprint-pulse {
+    0%, 100% { opacity: 1; color: #722F37; }
+    50% { opacity: 0.5; color: #8B3A42; }
 }
 
 /* ---- Account picker (passkey restore) ---- */
@@ -587,6 +637,29 @@ textarea.nq-input {
 
 .ack-match-remaining {
     color: var(--text-hint);
+}
+
+/* ---- Dark mode: biometric fingerprint ---- */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .biometric-trigger {
+        color: #C06070;
+    }
+    :root:not([data-theme="light"]) .biometric-trigger svg {
+        animation-name: fingerprint-pulse-dark;
+    }
+}
+
+:root[data-theme="dark"] .biometric-trigger {
+    color: #C06070;
+}
+
+:root[data-theme="dark"] .biometric-trigger svg {
+    animation-name: fingerprint-pulse-dark;
+}
+
+@keyframes fingerprint-pulse-dark {
+    0%, 100% { opacity: 1; color: #C06070; }
+    50% { opacity: 0.45; color: #D07080; }
 }
 
 /* ---- Dark mode additions for new components ---- */
