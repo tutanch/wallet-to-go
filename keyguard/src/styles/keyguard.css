@@ -14,6 +14,12 @@
     --text-hint: rgba(31, 35, 72, 0.55);
     --border-color: rgba(31, 35, 72, 0.15);
     --bg-subtle: rgba(31, 35, 72, 0.05);
+    --bg-card: white;
+    --bg-input-focus: white;
+    --overlay-bg: rgba(31, 35, 72, 0.85);
+    --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.3);
+    --btn-secondary-hover: rgba(31, 35, 72, 0.1);
+    --account-row-hover: rgba(5, 130, 202, 0.06);
 }
 
 /* Reset */
@@ -42,7 +48,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(31, 35, 72, 0.85);
+    background: var(--overlay-bg);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     padding: 16px;
@@ -57,14 +63,14 @@ body {
 
 /* ---- Card ---- */
 .keyguard-card {
-    background: white;
+    background: var(--bg-card);
     border-radius: 12px;
     width: 100%;
     max-width: 420px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-card);
 }
 
 /* ---- Header ---- */
@@ -143,7 +149,7 @@ body {
 .nq-input:focus {
     outline: none;
     border-color: var(--nq-light-blue);
-    background: white;
+    background: var(--bg-input-focus);
 }
 
 textarea.nq-input {
@@ -171,7 +177,7 @@ textarea.nq-input {
 .btn-primary {
     padding: 12px 24px;
     background: var(--nq-light-blue);
-    color: white;
+    color: #fff;
     border: none;
     border-radius: 500px;
     font-size: 15px;
@@ -227,7 +233,7 @@ textarea.nq-input {
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background: rgba(31, 35, 72, 0.1);
+    background: var(--btn-secondary-hover);
 }
 
 .btn-secondary:disabled {
@@ -368,7 +374,7 @@ textarea.nq-input {
 
 .account-row:hover:not(:disabled) {
     border-color: var(--nq-light-blue);
-    background: rgba(5, 130, 202, 0.06);
+    background: var(--account-row-hover);
 }
 
 .account-row:disabled {
@@ -405,4 +411,38 @@ textarea.nq-input {
     font-size: 12px;
     font-weight: 600;
     color: var(--nq-green);
+}
+
+/* ---- Dark mode (auto-detect) ---- */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --nq-blue: #e0e0ec;
+        --text-primary: #e0e0ec;
+        --text-secondary: rgba(224, 224, 236, 0.7);
+        --text-hint: rgba(224, 224, 236, 0.55);
+        --border-color: rgba(224, 224, 236, 0.15);
+        --bg-subtle: rgba(224, 224, 236, 0.08);
+        --bg-card: #1a1b2e;
+        --bg-input-focus: #22233a;
+        --overlay-bg: rgba(0, 0, 0, 0.8);
+        --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.6);
+        --btn-secondary-hover: rgba(224, 224, 236, 0.12);
+        --account-row-hover: rgba(5, 130, 202, 0.12);
+    }
+}
+
+/* ---- Dark mode (manual override) ---- */
+:root[data-theme="dark"] {
+    --nq-blue: #e0e0ec;
+    --text-primary: #e0e0ec;
+    --text-secondary: rgba(224, 224, 236, 0.7);
+    --text-hint: rgba(224, 224, 236, 0.55);
+    --border-color: rgba(224, 224, 236, 0.15);
+    --bg-subtle: rgba(224, 224, 236, 0.08);
+    --bg-card: #1a1b2e;
+    --bg-input-focus: #22233a;
+    --overlay-bg: rgba(0, 0, 0, 0.8);
+    --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.6);
+    --btn-secondary-hover: rgba(224, 224, 236, 0.12);
+    --account-row-hover: rgba(5, 130, 202, 0.12);
 }

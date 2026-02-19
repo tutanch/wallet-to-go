@@ -471,13 +471,15 @@ function renderWebAuthnPrompt() {
                 <div class="keyguard-body">
                     <div class="webauthn-icon">
                         <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 11c0-1.1.9-2 2-2s2 .9 2 2c0 1.5-1.2 2.7-2 3.5"/>
-                            <path d="M12 11c0-2.2 1.8-4 4-4s4 1.8 4 4c0 2.5-2 5-4 6.5"/>
-                            <path d="M12 11c0-3.3 2.7-6 6-6s6 2.7 6 6c0 4-3 7.5-6 9.5"/>
-                            <path d="M2 11c0-5.5 4.5-10 10-10s10 4.5 10 10"/>
-                            <path d="M2 11c0 4.5 3.5 8.5 7 10.5"/>
-                            <path d="M7 11c0-2.8 2.2-5 5-5"/>
-                            <path d="M7 11c0 3 1.5 5.5 4 7.5"/>
+                            <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
+                            <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
+                            <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
+                            <path d="M2 12a10 10 0 0 1 18-6"/>
+                            <path d="M2 16h.01"/>
+                            <path d="M21.8 16c.2-2 .131-5.354 0-6"/>
+                            <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
+                            <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
+                            <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
                         </svg>
                     </div>
                     <p class="error-text" id="error" style="display:none;"></p>
@@ -1513,6 +1515,17 @@ window.addEventListener('message', async (event) => {
     // Ping/pong: wallet sends this to recover if it missed the initial 'ready'
     if (event.data?.type === 'ping') {
         try { event.source.postMessage({ type: 'ready' }, WALLET_ORIGIN); } catch (_) {}
+        return;
+    }
+
+    // Theme sync: wallet forwards its theme setting so keyguard matches
+    if (event.data?.type === 'set-theme') {
+        const theme = event.data.theme;
+        if (theme === 'light' || theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', theme);
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
         return;
     }
 

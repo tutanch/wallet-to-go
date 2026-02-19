@@ -58,6 +58,20 @@ export const keyguardReady = new Promise((resolve, reject) => {
     if (frame) frame.addEventListener('load', ping); // cover the still-loading case
 });
 
+// ── Theme sync ──────────────────────────────────────────────────────────
+// Forwards the wallet's theme setting to the keyguard iframe so it matches.
+
+export function syncThemeToKeyguard() {
+    try {
+        const frame = getFrame();
+        const theme = localStorage.getItem('nimiq-theme') || 'auto';
+        frame.contentWindow.postMessage({ type: 'set-theme', theme }, KEYGUARD_ORIGIN);
+    } catch (_) {}
+}
+
+// Send theme once keyguard is ready
+keyguardReady.then(() => syncThemeToKeyguard()).catch(() => {});
+
 // ── Address cache ────────────────────────────────────────────────────────
 // Avoids repeated cross-origin postMessage round-trips for hasKey/getStoredAddress.
 // Invalidated on deleteWallet, set on create/import/restore.

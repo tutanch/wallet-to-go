@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount } from '../modules/keyguard-api.js';
+import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount, syncThemeToKeyguard } from '../modules/keyguard-api.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 import { enableSwipeBack } from '../modules/gestures.js';
@@ -88,6 +88,7 @@ export function settingsView() {
         }
         el.querySelectorAll('#btn-theme-auto, #btn-theme-light, #btn-theme-dark').forEach(b => b.classList.remove('selected'));
         el.querySelector(`#btn-theme-${theme}`).classList.add('selected');
+        syncThemeToKeyguard();
     }
 
     el.querySelector('#btn-theme-auto').addEventListener('click', () => applyTheme('auto'));

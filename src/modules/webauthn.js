@@ -129,27 +129,27 @@ function showGesturePrompt(isCreate) {
     return new Promise((resolve, reject) => {
         const overlay = document.createElement('div');
         overlay.id = 'webauthn-gesture-overlay';
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(31,35,72,0.85);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:fadeIn .15s ease-out;';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:var(--color-overlay);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:fadeIn .15s ease-out;';
 
         const card = document.createElement('div');
-        card.style.cssText = 'background:white;border-radius:12px;padding:28px 24px;max-width:360px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+        card.style.cssText = 'background:var(--color-bg);border-radius:12px;padding:28px 24px;max-width:360px;width:90%;text-align:center;box-shadow:var(--shadow-dropdown);';
 
         const title = document.createElement('h2');
-        title.style.cssText = 'font-size:18px;font-weight:700;color:#1F2348;margin-bottom:8px;';
+        title.style.cssText = 'font-size:18px;font-weight:700;color:var(--color-text);margin-bottom:8px;';
         title.textContent = isCreate ? 'Register Passkey' : 'Authenticate';
 
         const desc = document.createElement('p');
-        desc.style.cssText = 'font-size:14px;color:rgba(31,35,72,0.7);margin-bottom:20px;line-height:1.4;';
+        desc.style.cssText = 'font-size:14px;color:var(--color-text-secondary);margin-bottom:20px;line-height:1.4;';
         desc.textContent = isCreate
             ? 'Click the button below, then follow your browser\'s prompt to register your biometric or passkey.'
             : 'Click the button below, then use your fingerprint, face, or device PIN to authenticate.';
 
         const btn = document.createElement('button');
-        btn.style.cssText = 'padding:12px 32px;background:#0582CA;color:white;border:none;border-radius:500px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,130,202,0.3);min-height:44px;';
+        btn.style.cssText = 'padding:12px 32px;background:var(--nimiq-light-blue);color:white;border:none;border-radius:500px;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(5,130,202,0.3);min-height:44px;';
         btn.textContent = 'Continue';
 
         const cancelBtn = document.createElement('button');
-        cancelBtn.style.cssText = 'padding:8px 16px;background:rgba(31,35,72,0.05);color:#1F2348;border:1px solid rgba(31,35,72,0.15);border-radius:500px;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px;min-height:36px;';
+        cancelBtn.style.cssText = 'padding:8px 16px;background:var(--color-bg-muted);color:var(--color-text);border:1px solid var(--color-border-strong);border-radius:500px;font-size:14px;font-weight:600;cursor:pointer;margin-top:12px;min-height:36px;';
         cancelBtn.textContent = 'Cancel';
 
         card.appendChild(title);
