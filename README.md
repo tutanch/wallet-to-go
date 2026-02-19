@@ -14,6 +14,7 @@ A lightweight, fully client-side Nimiq blockchain wallet built with vanilla Java
 - **Cross-origin keyguard** — all key operations run in an isolated iframe on a separate origin; private keys never touch the wallet's origin
 - **Encrypted key storage** — private keys are encrypted with a user password or passkey-derived key and stored in the keyguard's IndexedDB (inaccessible to the wallet)
 - **QR code** generation for receiving addresses (native encoder, no external library)
+- **Batch send** — send NIM to multiple recipients at once; paste addresses or upload a CSV, preview totals, sign once, broadcast in parallel
 - **Transaction history** with pagination
 - **Network switching** between Mainnet and Testnet
 - **Service worker integrity pinning** — all assets are SHA-256 verified on install; tampered files are rejected
@@ -68,15 +69,14 @@ src/
     receive-view.js       Address display + QR code
     history-view.js       Full transaction history
     settings-view.js      Network switch, biometric toggle, backup, deletion
+    batch-send-view.js    Bulk TX tool: paste/upload addresses, sign once, broadcast
   lib/
     qr-encoder.js         Native QR code encoder (no external library)
   styles/
-    app.css               Application styles
+    app.css               Application styles (includes design tokens)
 lib/
   nimiq-core/             Nimiq Core WASM library
 public/
-  vendor/
-    nimiq-style.min.css   Self-hosted Nimiq Style CSS
   favicon.svg
 
 keyguard/                 Keyguard app (deployed to separate origin)
@@ -90,11 +90,6 @@ keyguard/                 Keyguard app (deployed to separate origin)
     nimiq-core/           Nimiq Core WASM library (copy)
   public/
     favicon.svg
-
-batch-sender/             Optional batch transaction tool (Docker)
-  index.html              Standalone batch-send UI
-  Dockerfile              nginx:alpine serving the tool + nimiq-core
-  docker-compose.yml      Exposes on 127.0.0.1:8080
 ```
 
 ## Requirements
@@ -189,7 +184,7 @@ On first visit, the service worker pre-caches every asset and verifies each file
 ### Additional hardening
 
 - **Content Security Policy** — `script-src` limited to `'self'` and `'wasm-unsafe-eval'` (no `'unsafe-eval'`); `frame-src` restricted to the keyguard origin; no CDN sources
-- **Self-hosted dependencies** — `nimiq-style.min.css` is vendored locally (SHA-384 verified before committing); no runtime CDN requests
+- **No external CSS** — design tokens are defined in `app.css`; no runtime CDN requests
 - **API freezing** (`security-init.js`) protects `crypto.subtle`, `indexedDB`, and `Uint8Array.prototype.fill` from prototype pollution before any other scripts load
 - **DOM-safe rendering** — user-facing text uses `textContent` / DOM APIs; the keyguard uses `escHtml()` for all template interpolation
 - **Sandboxed iframe** — `sandbox="allow-scripts allow-same-origin allow-forms"` on the keyguard iframe; `allow-same-origin` is safe because the origins are already different
@@ -204,21 +199,9 @@ On first visit, the service worker pre-caches every asset and verifies each file
 
 All network traffic is direct P2P WebSocket connections to the Nimiq blockchain.
 
-### Batch sender
-
-An optional Docker-based tool for sending NIM to multiple recipients in bulk. Located in `batch-sender/`.
-
-```bash
-cd batch-sender
-docker-compose up
-```
-
-Opens at `http://127.0.0.1:8080`. This is a standalone tool independent of the main wallet.
-
 ## Tech Stack
 
 - [Nimiq Core](https://github.com/nimiq/core-rs-albatross) (Albatross PoS, pico sync mode)
-- [Nimiq Style](https://github.com/nimiq/nimiq-style) CSS framework (self-hosted)
 - Native QR encoder (`src/lib/qr-encoder.js`, no external library)
 - WebAuthn PRF extension + WebCrypto API (AES-GCM) for passkey support
 - Vanilla JavaScript (ES modules, no bundler)
