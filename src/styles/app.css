@@ -742,12 +742,21 @@ body {
 
 /* ---- View transitions ---- */
 .view-container {
-    animation: fadeIn 0.2s ease-out;
+    animation: viewEnter 0.2s ease-out both;
 }
 
-@keyframes fadeIn {
-    from { transform: translateY(4px); }
-    to { transform: translateY(0); }
+.view-exit {
+    animation: viewExit 0.12s ease-in both;
+}
+
+@keyframes viewEnter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes viewExit {
+    from { opacity: 1; }
+    to   { opacity: 0; }
 }
 
 /* ---- Batch Send view ---- */

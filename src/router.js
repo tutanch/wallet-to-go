@@ -41,11 +41,17 @@ async function handleHashChange() {
         return;
     }
 
-    // Create the new view BEFORE clearing the old one.
-    // This keeps the current view visible while an async view (e.g. dashboard)
-    // loads its data, preventing a blank flash during the transition.
+    // Build the new view while the old one is still visible
     const result = await factory();
     if (thisNavId !== navigationId) return;
+
+    // Fade out old view
+    const oldView = $app.firstElementChild;
+    if (oldView) {
+        oldView.classList.add('view-exit');
+        await new Promise(r => setTimeout(r, 120));
+        if (thisNavId !== navigationId) return;
+    }
 
     if (currentCleanup) {
         currentCleanup();
