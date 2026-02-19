@@ -19,8 +19,61 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
+function showDisclaimer() {
+    return new Promise(resolve => {
+        if (localStorage.getItem('disclaimer-accepted')) return resolve();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'disclaimer-overlay';
+
+        const modal = document.createElement('div');
+        modal.className = 'disclaimer-modal';
+
+        const icon = document.createElement('div');
+        icon.className = 'disclaimer-icon';
+        icon.textContent = '\u26A0';
+
+        const title = document.createElement('h2');
+        title.className = 'nq-h1';
+        title.textContent = 'Experimental Software';
+
+        const body = document.createElement('div');
+        body.className = 'disclaimer-body';
+
+        const p1 = document.createElement('p');
+        p1.textContent = 'This wallet is experimental software intended for testing purposes only. Do not use it to store or manage funds you cannot afford to lose.';
+
+        const p2 = document.createElement('p');
+        p2.textContent = 'This application is open source and served from GitHub Pages. It runs entirely on your device — no server stores your keys or data. You are solely responsible for any use of this software.';
+
+        const p3 = document.createElement('p');
+        p3.textContent = 'The authors provide no warranty and accept no liability for any loss or damage arising from the use of this wallet.';
+
+        body.append(p1, p2, p3);
+
+        const btn = document.createElement('button');
+        btn.className = 'nq-button light-blue';
+        btn.textContent = 'I Understand & Accept';
+        btn.addEventListener('click', () => {
+            localStorage.setItem('disclaimer-accepted', Date.now().toString());
+            overlay.classList.add('disclaimer-fade-out');
+            overlay.addEventListener('animationend', () => {
+                overlay.remove();
+                resolve();
+            });
+        });
+
+        modal.append(icon, title, body, btn);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+    });
+}
+
 async function init() {
     try {
+        // Show disclaimer before anything else
+        await showDisclaimer();
+
         // Load Nimiq WASM and wait for keyguard iframe in parallel
         await Promise.all([loadNimiq(), keyguardReady]);
 
