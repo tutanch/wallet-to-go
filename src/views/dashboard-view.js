@@ -1,8 +1,17 @@
 import { navigate } from '../router.js';
-import { getStoredAddress } from '../modules/keyguard-api.js';
+import { getStoredAddress, getDerivedAddresses } from '../modules/keyguard-api.js';
 import * as network from '../modules/network-client.js';
 import { formatNim, getSelectedNetwork } from '../config.js';
 import { renderTxItem } from './history-view.js';
+
+// ── Active address index (persists across navigations) ───────────
+export function getActiveAddressIndex() {
+    return parseInt(localStorage.getItem('nimiq-addr-idx') || '0', 10);
+}
+
+export function setActiveAddressIndex(idx) {
+    localStorage.setItem('nimiq-addr-idx', String(idx));
+}
 
 // ── Module-level cache (survives navigation) ────────────────────
 const cache = { balance: null, consensus: 'connecting', recentTxs: [], headHeight: 0, address: null, network: null };
@@ -87,19 +96,31 @@ function startBackground(address) {
 
 // ── View ────────────────────────────────────────────────────────
 export async function dashboardView() {
-    const address = await getStoredAddress();
-    if (!address) {
+    const defaultAddress = await getStoredAddress();
+    if (!defaultAddress) {
         navigate('#welcome');
         return document.createElement('div');
     }
 
-    // Start or re-attach background listeners (no-op if already running for same address+network)
-    startBackground(address);
+    // Fetch all derived addresses (non-blocking — falls back to just the default)
+    let allAddresses = [{ index: 0, address: defaultAddress }];
+    try {
+        const result = await getDerivedAddresses();
+        if (result?.addresses?.length > 0) allAddresses = result.addresses;
+    } catch (_) {}
+
+    let activeIdx = getActiveAddressIndex();
+    if (activeIdx >= allAddresses.length) activeIdx = 0;
+    let currentAddress = allAddresses[activeIdx]?.address || defaultAddress;
+
+    // Start background listeners for the current address
+    startBackground(currentAddress);
 
     const el = document.createElement('div');
     el.className = 'view-container';
 
     const networkLabel = getSelectedNetwork() === 'main' ? 'Mainnet' : 'Testnet';
+    const hasMultiple = allAddresses.length > 1;
 
     el.innerHTML = `
         <div class="nq-card dashboard-card">
@@ -113,8 +134,13 @@ export async function dashboardView() {
                     <span class="balance-amount nq-h1" id="d-balance">...</span>
                     <span class="balance-currency">NIM</span>
                 </div>
-                <div class="address-display" id="address-copy" title="Click to copy">
-                    <span class="address-text" id="d-address"></span>
+                <div class="address-switcher">
+                    <button class="addr-nav-btn" id="btn-addr-prev" ${hasMultiple ? '' : 'style="visibility:hidden;"'}>&lsaquo;</button>
+                    <div class="address-display" id="address-copy" title="Click to copy">
+                        <span class="address-text" id="d-address"></span>
+                        ${hasMultiple ? '<span class="address-idx" id="d-addr-idx"></span>' : ''}
+                    </div>
+                    <button class="addr-nav-btn" id="btn-addr-next" ${hasMultiple ? '' : 'style="visibility:hidden;"'}>&rsaquo;</button>
                 </div>
             </div>
             <div class="nq-card-body">
@@ -143,14 +169,40 @@ export async function dashboardView() {
     const $balance = el.querySelector('#d-balance');
     const $blockHeight = el.querySelector('#d-block-height');
     const $address = el.querySelector('#d-address');
+    const $addrIdx = el.querySelector('#d-addr-idx');
     const $txList = el.querySelector('#d-tx-list');
     const $btnAllTxs = el.querySelector('#btn-all-txs');
 
-    $address.textContent = address;
+    function renderAddress() {
+        $address.textContent = currentAddress;
+        if ($addrIdx) $addrIdx.textContent = `${activeIdx + 1} / ${allAddresses.length}`;
+    }
+    renderAddress();
+
+    // Address switching
+    function switchToAddress(newIdx) {
+        if (newIdx < 0) newIdx = allAddresses.length - 1;
+        if (newIdx >= allAddresses.length) newIdx = 0;
+        activeIdx = newIdx;
+        currentAddress = allAddresses[activeIdx].address;
+        setActiveAddressIndex(activeIdx);
+        renderAddress();
+        startBackground(currentAddress);
+        update();
+    }
+
+    el.querySelector('#btn-addr-prev').addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchToAddress(activeIdx - 1);
+    });
+    el.querySelector('#btn-addr-next').addEventListener('click', (e) => {
+        e.stopPropagation();
+        switchToAddress(activeIdx + 1);
+    });
 
     el.querySelector('#address-copy').addEventListener('click', async () => {
         try {
-            await navigator.clipboard.writeText(address);
+            await navigator.clipboard.writeText(currentAddress);
             const original = $address.textContent;
             $address.textContent = 'Copied!';
             setTimeout(() => { $address.textContent = original; }, 1500);
@@ -185,7 +237,7 @@ export async function dashboardView() {
         $txList.innerHTML = '';
         if (cache.recentTxs.length > 0) {
             cache.recentTxs.slice(0, 5).forEach(tx => {
-                $txList.appendChild(renderTxItem(tx, address));
+                $txList.appendChild(renderTxItem(tx, currentAddress));
             });
             $btnAllTxs.style.display = '';
         } else {

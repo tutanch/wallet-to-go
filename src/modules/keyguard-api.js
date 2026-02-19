@@ -206,11 +206,19 @@ export async function importWallet() {
 }
 
 /**
+ * Get all derived addresses for the current wallet. No UI shown.
+ * Returns { addresses: [{ index, address }] }.
+ */
+export function getDerivedAddresses() {
+    return call('getDerivedAddresses', null, 15000);
+}
+
+/**
  * Sign transaction. Keyguard shows TX confirmation + password entry.
  * No password param — keyguard prompts the user.
  * Returns { serializedTx: Uint8Array }.
  */
-export function signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId }) {
+export function signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, addressIndex }) {
     return call('signTransaction', {
         senderAddress,
         recipientAddress,
@@ -219,6 +227,7 @@ export function signTransaction({ senderAddress, recipientAddress, value, fee, m
         message,
         validityStartHeight,
         networkId,
+        addressIndex,
     });
 }
 
@@ -227,8 +236,8 @@ export function signTransaction({ senderAddress, recipientAddress, value, fee, m
  * Signs all transactions with one authentication.
  * Returns { serializedTransactions: Uint8Array[] }.
  */
-export function signBatchTransaction({ senderAddress, transactions }) {
-    return call('signBatchTransaction', { senderAddress, transactions }, 300000);
+export function signBatchTransaction({ senderAddress, transactions, addressIndex }) {
+    return call('signBatchTransaction', { senderAddress, transactions, addressIndex }, 300000);
 }
 
 /**

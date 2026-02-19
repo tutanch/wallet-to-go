@@ -1,15 +1,26 @@
 import { navigate } from '../router.js';
-import { getStoredAddress, signBatchTransaction } from '../modules/keyguard-api.js';
+import { getStoredAddress, getDerivedAddresses, signBatchTransaction } from '../modules/keyguard-api.js';
+import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { nimToLuna, lunaToNim, formatNim, getNetworkConfig } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
 
 export async function batchSendView() {
-    const address = await getStoredAddress();
-    if (!address) {
+    const defaultAddress = await getStoredAddress();
+    if (!defaultAddress) {
         navigate('#welcome');
         return document.createElement('div');
     }
+
+    // Use the active derived address
+    const activeIdx = getActiveAddressIndex();
+    let address = defaultAddress;
+    try {
+        const result = await getDerivedAddresses();
+        if (result?.addresses?.[activeIdx]) {
+            address = result.addresses[activeIdx].address;
+        }
+    } catch (_) {}
 
     const el = document.createElement('div');
     el.className = 'view-container';
@@ -336,6 +347,7 @@ export async function batchSendView() {
             const { serializedTransactions } = await signBatchTransaction({
                 senderAddress: address,
                 transactions,
+                addressIndex: activeIdx,
             });
 
             // Replace footer with stop button

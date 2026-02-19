@@ -34,7 +34,6 @@ export const NETWORKS = {
 
 const VALID_NETWORKS = Object.keys(NETWORKS);
 
-export const DEFAULT_DERIVATION_PATH = "m/44'/242'/0'/0'";
 export const LUNAS_PER_NIM = 100000;
 
 export function getSelectedNetwork() {

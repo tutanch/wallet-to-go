@@ -185,7 +185,7 @@ export function settingsView() {
         errorEl.style.display = 'none';
 
         try {
-            const result = await switchAccount();
+            await switchAccount();
             // Account switched — reload dashboard
             navigate('#dashboard');
         } catch (e) {

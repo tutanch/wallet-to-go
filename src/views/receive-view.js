@@ -1,13 +1,24 @@
 import { navigate } from '../router.js';
-import { getStoredAddress } from '../modules/keyguard-api.js';
+import { getStoredAddress, getDerivedAddresses } from '../modules/keyguard-api.js';
+import { getActiveAddressIndex } from './dashboard-view.js';
 import { renderQr } from '../lib/qr-encoder.js';
 
 export async function receiveView() {
-    const address = await getStoredAddress();
-    if (!address) {
+    const defaultAddress = await getStoredAddress();
+    if (!defaultAddress) {
         navigate('#welcome');
         return document.createElement('div');
     }
+
+    // Use the active derived address
+    const activeIdx = getActiveAddressIndex();
+    let address = defaultAddress;
+    try {
+        const result = await getDerivedAddresses();
+        if (result?.addresses?.[activeIdx]) {
+            address = result.addresses[activeIdx].address;
+        }
+    } catch (_) {}
 
     const el = document.createElement('div');
     el.className = 'view-container';

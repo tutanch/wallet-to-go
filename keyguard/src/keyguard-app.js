@@ -1683,7 +1683,7 @@ window.addEventListener('message', async (event) => {
     if (!Number.isInteger(sessionId)) return;
 
     // Transparent passthroughs: no UI, immediate response via worker
-    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword'];
+    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword', 'getDerivedAddresses'];
     if (PASSTHROUGH_COMMANDS.includes(command)) {
         try {
             const result = await callWorker(command);

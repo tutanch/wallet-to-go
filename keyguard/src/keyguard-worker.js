@@ -18,7 +18,9 @@ import {
     SerialBuffer,
 } from '../lib/nimiq-core/lib/web/index.mjs';
 
-const DEFAULT_DERIVATION_PATH = "m/44'/242'/0'/0'";
+// Base derivation path — address index is appended by getDerivationPath().
+// Full path: m/44'/242'/0'/{addressIndex}'
+const DERIVATION_BASE = "m/44'/242'/0'";
 
 // ── IndexedDB helpers ──────────────────────────────────────────────
 
@@ -134,11 +136,17 @@ function zeroEntropy(entropy) {
 
 // ── Key derivation helpers ─────────────────────────────────────────
 
-function deriveAddress(entropy) {
+const NUM_DERIVED_ADDRESSES = 10;
+
+function getDerivationPath(addressIndex = 0) {
+    return `${DERIVATION_BASE}/${addressIndex}'`;
+}
+
+function deriveAddress(entropy, addressIndex = 0) {
     let masterKey, childKey, publicKey;
     try {
         masterKey = entropy.toExtendedPrivateKey();
-        childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
+        childKey = masterKey.derivePath(getDerivationPath(addressIndex));
         publicKey = PublicKey.derive(childKey.privateKey);
         return publicKey.toAddress();
     } finally {
@@ -146,6 +154,15 @@ function deriveAddress(entropy) {
         freeExtendedKey(masterKey);
         freeWasm(publicKey);
     }
+}
+
+function deriveMultipleAddresses(entropy, count = NUM_DERIVED_ADDRESSES) {
+    const addresses = [];
+    for (let i = 0; i < count; i++) {
+        const addr = deriveAddress(entropy, i);
+        addresses.push({ index: i, address: addr.toUserFriendlyAddress() });
+    }
+    return addresses;
 }
 
 // ── HKDF helper ─────────────────────────────────────────────────────
@@ -251,6 +268,12 @@ const handlers = {
         return Address.fromAny(record.defaultAddress).toUserFriendlyAddress();
     },
 
+    async getDerivedAddresses() {
+        const record = await getRecord();
+        if (!record) return { addresses: [] };
+        return { addresses: record.derivedAddresses || [] };
+    },
+
     async createWallet() {
         await ensureWasm();
         const entropy = Entropy.generate();
@@ -286,11 +309,13 @@ const handlers = {
         if (!password && !prfKey) throw new Error('At least one auth method required');
 
         const address = deriveAddress(pendingEntropy);
+        const derivedAddresses = deriveMultipleAddresses(pendingEntropy);
         const walletId = BufferUtils.toBase64(Hash.computeBlake2b(pendingEntropy.serialize()));
 
         const record = {
             walletId,
             defaultAddress: address.serialize(),
+            derivedAddresses,
         };
 
         // Password encryption (optional)
@@ -331,11 +356,13 @@ const handlers = {
 
         try {
             const address = deriveAddress(entropy);
+            const derivedAddresses = deriveMultipleAddresses(entropy);
             const walletId = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
             const record = {
                 walletId,
                 defaultAddress: address.serialize(),
+                derivedAddresses,
             };
 
             // Password encryption (optional)
@@ -367,7 +394,7 @@ const handlers = {
         }
     },
 
-    async signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, password, prfKey }) {
+    async signTransaction({ senderAddress, recipientAddress, value, fee, message, validityStartHeight, networkId, password, prfKey, addressIndex = 0 }) {
         await ensureWasm();
 
         // Decrypt key
@@ -398,7 +425,7 @@ const handlers = {
             const sender = Address.fromString(senderAddress);
             const recipient = Address.fromString(recipientAddress);
             masterKey = entropy.toExtendedPrivateKey();
-            childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
+            childKey = masterKey.derivePath(getDerivationPath(addressIndex));
             privateKey = childKey.privateKey; // same ref as childKey._key
             publicKey = PublicKey.derive(privateKey);
 
@@ -424,7 +451,7 @@ const handlers = {
         }
     },
 
-    async signBatchTransaction({ senderAddress, transactions, password, prfKey }) {
+    async signBatchTransaction({ senderAddress, transactions, password, prfKey, addressIndex = 0 }) {
         await ensureWasm();
 
         const record = await getRecord();
@@ -452,7 +479,7 @@ const handlers = {
         try {
             const sender = Address.fromString(senderAddress);
             masterKey = entropy.toExtendedPrivateKey();
-            childKey = masterKey.derivePath(DEFAULT_DERIVATION_PATH);
+            childKey = masterKey.derivePath(getDerivationPath(addressIndex));
             privateKey = childKey.privateKey;
             publicKey = PublicKey.derive(privateKey);
 
@@ -639,11 +666,13 @@ const handlers = {
                 }
             }
 
+            const derivedAddresses = deriveMultipleAddresses(entropy);
             const walletId = BufferUtils.toBase64(Hash.computeBlake2b(entropy.serialize()));
 
             const record = {
                 walletId,
                 defaultAddress: address.serialize(),
+                derivedAddresses,
             };
 
             // Encrypt entropy with PRF key for future WebAuthn unlock
