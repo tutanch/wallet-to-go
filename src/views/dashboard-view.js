@@ -129,10 +129,14 @@ export async function dashboardView() {
 
     update();
 
-    // ── Network callbacks ──────────────────────────────────────────
-    await network.connect();
+    // ── Network callbacks (non-blocking) ────────────────────────────
+    // Network init runs after the view is returned so navigation feels instant.
+    // The skeleton (balance "...", "Connecting...") is already visible.
+    let removeConsensus = null;
+    let removeHead = null;
+    let removeTxListener = null;
+    let cleaned = false;
 
-    // Fetch balance + history + initial head height on consensus established
     async function fetchFullData() {
         try {
             balance = await network.getBalance(address);
@@ -143,60 +147,62 @@ export async function dashboardView() {
         }
     }
 
-    const removeConsensus = network.onConsensusChanged(async (state) => {
-        consensus = state;
-        if (state === 'established') {
-            await fetchFullData();
-        }
-        update();
-    });
+    async function initNetwork() {
+        await network.connect();
+        if (cleaned) return;
 
-    // If consensus is already established (e.g. navigating back from another view),
-    // the listener above won't fire — so check current state immediately.
-    if (await network.isConsensusEstablished()) {
-        consensus = 'established';
-        await fetchFullData();
-        update();
+        removeConsensus = network.onConsensusChanged(async (state) => {
+            consensus = state;
+            if (state === 'established') {
+                await fetchFullData();
+            }
+            update();
+        });
+
+        // If consensus is already established (e.g. navigating back from another view),
+        // the listener above won't fire — so check current state immediately.
+        if (await network.isConsensusEstablished()) {
+            consensus = 'established';
+            await fetchFullData();
+            update();
+        }
+
+        if (cleaned) return;
+
+        removeHead = network.onHeadChanged(async (hash) => {
+            try {
+                const block = await network.getBlock(hash);
+                if (block) {
+                    headHeight = block.height;
+                    update();
+                }
+            } catch (e) {
+                console.error('Failed to get block:', e);
+            }
+        });
+
+        network.addTransactionListener(async (tx) => {
+            recentTxs = [tx, ...recentTxs].slice(0, 10);
+            try { balance = await network.getBalance(address); } catch (_) {}
+            update();
+        }, [address]).then(remove => {
+            if (cleaned) {
+                if (typeof remove === 'function') remove();
+            } else {
+                removeTxListener = remove;
+            }
+        });
     }
 
-    // Head changes update block height directly from the event —
-    // no network call needed. Balance is NOT refetched here, as it
-    // only changes on transactions (matching the Nimiq Wallet pattern).
-    const removeHead = network.onHeadChanged(async (hash) => {
-        try {
-            const block = await network.getBlock(hash);
-            if (block) {
-                headHeight = block.height;
-                update();
-            }
-        } catch (e) {
-            console.error('Failed to get block:', e);
-        }
-    });
-
-    // Transaction listener handles new txs in real-time without polling.
-    // Store the removal function once resolved to handle cleanup race condition.
-    let removeTxListener = null;
-    let cleaned = false;
-    network.addTransactionListener(async (tx) => {
-        recentTxs = [tx, ...recentTxs].slice(0, 10);
-        try { balance = await network.getBalance(address); } catch (_) {}
-        update();
-    }, [address]).then(remove => {
-        if (cleaned) {
-            // View was already cleaned up before listener resolved — remove immediately
-            if (typeof remove === 'function') remove();
-        } else {
-            removeTxListener = remove;
-        }
-    });
+    // Fire and forget — view is returned immediately below
+    initNetwork();
 
     return {
         element: el,
         cleanup: () => {
             cleaned = true;
-            removeConsensus();
-            removeHead();
+            if (removeConsensus) removeConsensus();
+            if (removeHead) removeHead();
             if (typeof removeTxListener === 'function') removeTxListener();
         },
     };
