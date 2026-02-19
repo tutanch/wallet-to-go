@@ -51,7 +51,7 @@ export async function getClient() {
     return clientPromise;
 }
 
-export async function waitForConsensus(timeoutMs = CONSENSUS_TIMEOUT_MS) {
+async function waitForConsensus(timeoutMs = CONSENSUS_TIMEOUT_MS) {
     const client = await getClient();
     const consensusPromise = client.waitForConsensusEstablished();
     const timeoutPromise = new Promise((_, reject) => {
@@ -87,7 +87,7 @@ export async function getHistory(address, limit = 50) {
     );
 }
 
-export async function sendTransaction(tx) {
+async function sendTransaction(tx) {
     const client = await getClient();
     await waitForConsensus();
     return client.sendTransaction(tx);

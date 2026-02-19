@@ -34,7 +34,7 @@ export const NETWORKS = {
 
 const VALID_NETWORKS = Object.keys(NETWORKS);
 
-export const LUNAS_PER_NIM = 100000;
+const LUNAS_PER_NIM = 100000;
 
 export function getSelectedNetwork() {
     const stored = localStorage.getItem('nimiq-network');

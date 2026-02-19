@@ -8,11 +8,7 @@
     --nimiq-light-blue: #0582CA;
     --nimiq-light-blue-darkened: #0071C3;
     --nimiq-green: #21BCA5;
-    --nimiq-green-darkened: #20B29E;
-    --nimiq-red: #D94432;
-    --nimiq-white: #FFF;
     --nimiq-card-bg: white;
-    --nimiq-ease: cubic-bezier(0.25, 0, 0, 1);
     --nimiq-blue-bg: radial-gradient(100% 100% at bottom right, #260133, #1F2348);
     --nimiq-light-blue-bg: radial-gradient(100% 100% at bottom right, #265DD7, #0582CA);
     --nimiq-light-blue-bg-darkened: radial-gradient(100% 100% at bottom right, #2355C4, #0071C3);
@@ -850,12 +846,6 @@ body {
     font-size: 12px;
     color: rgba(31, 35, 72, 0.55);
     margin-top: 8px;
-}
-
-/* ---- Send view: password section ---- */
-.password-section {
-    padding-top: 16px;
-    border-top: 1px solid rgba(31, 35, 72, 0.08);
 }
 
 .success-message {

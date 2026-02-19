@@ -14,7 +14,7 @@ export function navigate(hash) {
     window.location.hash = hash;
 }
 
-export function getCurrentRoute() {
+function getCurrentRoute() {
     return window.location.hash || '#welcome';
 }
 

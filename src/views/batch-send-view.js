@@ -32,7 +32,7 @@ export async function batchSendView() {
         <div class="nq-card">
             <div class="nq-card-header">
                 <h1 class="nq-h1">Batch Send NIM</h1>
-                <p class="nq-text-s">Send NIM to multiple recipients at once.</p>
+                <p class="nq-text">Send NIM to multiple recipients at once.</p>
             </div>
             <div class="nq-card-body">
                 <div class="form-group">

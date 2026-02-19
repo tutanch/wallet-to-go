@@ -9,7 +9,7 @@ export function getActiveAddressIndex() {
     return parseInt(localStorage.getItem('nimiq-addr-idx') || '0', 10);
 }
 
-export function setActiveAddressIndex(idx) {
+function setActiveAddressIndex(idx) {
     localStorage.setItem('nimiq-addr-idx', String(idx));
 }
 
