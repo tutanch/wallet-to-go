@@ -249,10 +249,11 @@ export function signTransaction({ senderAddress, recipientAddress, value, fee, m
 /**
  * Sign batch transactions. Keyguard shows batch confirmation + password/biometric entry.
  * Signs all transactions with one authentication.
- * Returns { serializedTransactions: Uint8Array[] }.
+ * If encryptData is provided, also encrypts it in the same auth session.
+ * Returns { serializedTransactions: Uint8Array[], encryptedData?: { ciphertext, iv } }.
  */
-export function signBatchTransaction({ senderAddress, transactions, addressIndex }) {
-    return call('signBatchTransaction', { senderAddress, transactions, addressIndex }, 300000);
+export function signBatchTransaction({ senderAddress, transactions, addressIndex, encryptData }) {
+    return call('signBatchTransaction', { senderAddress, transactions, addressIndex, encryptData }, 300000);
 }
 
 /**

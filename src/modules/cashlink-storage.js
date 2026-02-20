@@ -63,6 +63,33 @@ export async function saveCashlinkRun({ urls, addresses, amountNim, message }) {
 }
 
 /**
+ * Save a cashlink run with already-encrypted data (no auth needed).
+ * Used when encryption was piggybacked on the signing step.
+ * @param {{ ciphertext: number[], iv: number[], count: number, amountNim: string, message: string }} opts
+ * @returns {string} The generated run ID
+ */
+export function savePreEncryptedRun({ ciphertext, iv, count, amountNim, message }) {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const meta = {
+        id,
+        date: Date.now(),
+        count,
+        amountNim,
+        message: message || '',
+    };
+
+    const runs = getSavedRunsMeta();
+    runs.push(meta);
+    localStorage.setItem(RUNS_META_KEY, JSON.stringify(runs));
+    localStorage.setItem(RUN_DATA_PREFIX + id, JSON.stringify({
+        ciphertext: arrayToBase64(ciphertext),
+        iv: arrayToBase64(iv),
+    }));
+
+    return id;
+}
+
+/**
  * Load a saved run's URLs and addresses. Shows keyguard auth prompt.
  * @param {string} id  Run ID
  * @returns {Promise<{ urls: string[], addresses: string[] }>}

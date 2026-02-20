@@ -1160,12 +1160,14 @@ function wireBiometricBatchSign(info, passwordSet, args, subtitle) {
         biometricBtn.querySelector('.biometric-hint').textContent = 'Signing...';
         try {
             const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
-            const { serializedTransactions } = await callWorker('signBatchTransaction', {
+            const { serializedTransactions, encryptedData } = await callWorker('signBatchTransaction', {
                 ...args, prfKey: Array.from(prfKey),
             });
             prfKey.fill(0);
             const transfer = serializedTransactions.map(tx => tx.buffer);
-            resolveSession({ serializedTransactions }, transfer);
+            const result = { serializedTransactions };
+            if (encryptedData) result.encryptedData = encryptedData;
+            resolveSession(result, transfer);
         } catch (err) {
             biometricBtn.disabled = false;
             biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
@@ -1200,12 +1202,14 @@ function showPasswordFormForBatchSign(args, subtitle) {
         const btn = ui.querySelector('#btn-submit');
         setButtonState(btn, 'Signing...', true);
         try {
-            const { serializedTransactions } = await callWorker('signBatchTransaction', {
+            const { serializedTransactions, encryptedData } = await callWorker('signBatchTransaction', {
                 ...args, password: pw,
             });
             ui.querySelector('#password').value = '';
             const transfer = serializedTransactions.map(tx => tx.buffer);
-            resolveSession({ serializedTransactions }, transfer);
+            const result = { serializedTransactions };
+            if (encryptedData) result.encryptedData = encryptedData;
+            resolveSession(result, transfer);
         } catch (err) {
             ui.querySelector('#password').value = '';
             setButtonState(btn, 'Continue', false);

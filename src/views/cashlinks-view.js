@@ -6,7 +6,7 @@ import { nimToLuna, formatNim, getNetworkConfig } from '../config.js';
 import { encodeCashlink, decodeCashlink, CASHLINK_FUNDING_DATA } from '../modules/cashlink-encoder.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
-import { getSavedRunsMeta, saveCashlinkRun, loadCashlinkRun, deleteCashlinkRun } from '../modules/cashlink-storage.js';
+import { getSavedRunsMeta, savePreEncryptedRun, loadCashlinkRun, deleteCashlinkRun } from '../modules/cashlink-storage.js';
 
 export async function cashlinksView() {
     const defaultAddress = await getStoredAddress();
@@ -343,6 +343,20 @@ export async function cashlinksView() {
         btnFund.textContent = 'Opening keyguard...';
 
         try {
+            // Generate URLs immediately so they're never lost
+            const cashlinks = keys.map(key => ({
+                url: encodeCashlink({
+                    privateKeyBytes: new Uint8Array(key.privateKeyBytes),
+                    valueLuna: amountLuna,
+                    message: message || undefined,
+                }),
+                address: key.address,
+            }));
+            const encryptPayload = JSON.stringify({
+                urls: cashlinks.map(c => c.url),
+                addresses: cashlinks.map(c => c.address),
+            });
+
             const validityStartHeight = await network.getHeadHeight();
             const networkId = await network.getNetworkId();
 
@@ -361,10 +375,21 @@ export async function cashlinksView() {
                 networkId,
             }));
 
-            const { serializedTransactions } = await signBatchTransaction({
+            // Sign TXs + encrypt cashlink data in one auth session
+            const { serializedTransactions, encryptedData } = await signBatchTransaction({
                 senderAddress: address,
                 transactions,
                 addressIndex: activeIdx,
+                encryptData: encryptPayload,
+            });
+
+            // Auto-save encrypted run immediately (before broadcasting)
+            savePreEncryptedRun({
+                ciphertext: encryptedData.ciphertext,
+                iv: encryptedData.iv,
+                count: keys.length,
+                amountNim: formatNim(amountLuna),
+                message: message || '',
             });
 
             // Replace footer with stop button
@@ -380,7 +405,6 @@ export async function cashlinksView() {
             const CONCURRENCY = 4;
             let sent = 0, failed = 0;
             const rows = el.querySelectorAll('#batch-tbody tr');
-            const fundedKeys = [];
 
             for (let i = 0; i < serializedTransactions.length; i += CONCURRENCY) {
                 if (stopRequested) break;
@@ -400,7 +424,6 @@ export async function cashlinksView() {
                     if (results[k].status === 'fulfilled') {
                         updateRowStatus(rows[j], 'sent', 'Funded');
                         sent++;
-                        fundedKeys.push(keys[j]);
                     } else {
                         updateRowStatus(rows[j], 'failed', 'Failed');
                         failed++;
@@ -408,7 +431,7 @@ export async function cashlinksView() {
                 }
             }
 
-            showCreateResults(fundedKeys, amountLuna, message, sent, failed);
+            showCreateResults(cashlinks, amountLuna, sent, failed);
 
         } catch (e) {
             btnFund.disabled = false;
@@ -433,17 +456,7 @@ export async function cashlinksView() {
 
     // ── Create: Step 4 — Results ────────────────────────────────
 
-    function showCreateResults(fundedKeys, amountLuna, message, sent, failed) {
-        // Build cashlink URLs
-        const cashlinks = fundedKeys.map(key => ({
-            url: encodeCashlink({
-                privateKeyBytes: new Uint8Array(key.privateKeyBytes),
-                valueLuna: amountLuna,
-                message: message || undefined,
-            }),
-            address: key.address,
-        }));
-
+    function showCreateResults(cashlinks, amountLuna, sent, failed) {
         el.innerHTML = `
             <div class="nq-card">
                 <div class="nq-card-header">
@@ -454,7 +467,6 @@ export async function cashlinksView() {
                     <div class="cashlink-actions">
                         <button class="nq-button-s" id="btn-copy-all">Copy All URLs</button>
                         <button class="nq-button-s" id="btn-export-csv">Export CSV</button>
-                        <button class="nq-button-s" id="btn-save-run">Save Run</button>
                     </div>
                     <div class="cashlink-list" id="cashlink-list"></div>
                 </div>
@@ -466,6 +478,7 @@ export async function cashlinksView() {
 
         const summaryParts = [`${sent} funded`];
         if (failed > 0) summaryParts.push(`${failed} failed`);
+        summaryParts.push('run auto-saved');
         el.querySelector('#result-summary').textContent = summaryParts.join(', ');
 
         renderCashlinkList(el.querySelector('#cashlink-list'), cashlinks.map(cl => cl.url));
@@ -482,29 +495,6 @@ export async function cashlinksView() {
         // Export CSV
         el.querySelector('#btn-export-csv').addEventListener('click', () => {
             exportCsv(cashlinks.map(cl => cl.url), cashlinks.map(cl => cl.address), formatNim(amountLuna), `cashlinks-${Date.now()}.csv`);
-        });
-
-        // Save Run
-        const saveBtn = el.querySelector('#btn-save-run');
-        saveBtn.addEventListener('click', async () => {
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Saving...';
-            try {
-                await saveCashlinkRun({
-                    urls: cashlinks.map(cl => cl.url),
-                    addresses: cashlinks.map(cl => cl.address),
-                    amountNim: formatNim(amountLuna),
-                    message: message || '',
-                });
-                saveBtn.textContent = 'Saved!';
-                showToast('Cashlink run saved', 'success');
-            } catch (e) {
-                saveBtn.disabled = false;
-                saveBtn.textContent = 'Save Run';
-                if (e.message !== 'User cancelled') {
-                    showToast('Could not save run.', 'error');
-                }
-            }
         });
 
         el.querySelector('#btn-done').addEventListener('click', () => navigate('#dashboard'));

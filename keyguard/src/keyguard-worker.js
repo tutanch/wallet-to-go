@@ -233,6 +233,25 @@ async function deriveCashlinkEncKey(entropy) {
     }
 }
 
+/** Encrypt a string with the cashlink encryption key derived from entropy. */
+async function encryptCashlinkString(entropy, data) {
+    const encKey = await deriveCashlinkEncKey(entropy);
+    try {
+        const plaintext = new TextEncoder().encode(data);
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const aesKey = await crypto.subtle.importKey(
+            'raw', encKey, { name: 'AES-GCM' }, false, ['encrypt'],
+        );
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv }, aesKey, plaintext,
+        );
+        return {
+            ciphertext: Array.from(new Uint8Array(ciphertext)),
+            iv: Array.from(iv),
+        };
+    } finally { encKey.fill(0); }
+}
+
 // ── WASM init ──────────────────────────────────────────────────────
 
 let wasmReady = false;
@@ -476,7 +495,7 @@ const handlers = {
         }
     },
 
-    async signBatchTransaction({ senderAddress, transactions, password, prfKey, addressIndex = 0 }) {
+    async signBatchTransaction({ senderAddress, transactions, password, prfKey, addressIndex = 0, encryptData }) {
         await ensureWasm();
 
         const record = await getRecord();
@@ -530,7 +549,14 @@ const handlers = {
                 serializedTransactions.push(tx.serialize());
             }
 
-            return { serializedTransactions };
+            const result = { serializedTransactions };
+
+            // Optionally encrypt cashlink data in the same auth session
+            if (encryptData) {
+                result.encryptedData = await encryptCashlinkString(entropy, encryptData);
+            }
+
+            return result;
         } finally {
             for (const sig of signatures) freeWasm(sig);
             freeWasm(publicKey);
@@ -826,21 +852,7 @@ const handlers = {
         }
 
         try {
-            const encKey = await deriveCashlinkEncKey(entropy);
-            try {
-                const plaintext = new TextEncoder().encode(data);
-                const iv = crypto.getRandomValues(new Uint8Array(12));
-                const aesKey = await crypto.subtle.importKey(
-                    'raw', encKey, { name: 'AES-GCM' }, false, ['encrypt'],
-                );
-                const ciphertext = await crypto.subtle.encrypt(
-                    { name: 'AES-GCM', iv }, aesKey, plaintext,
-                );
-                return {
-                    ciphertext: Array.from(new Uint8Array(ciphertext)),
-                    iv: Array.from(iv),
-                };
-            } finally { encKey.fill(0); }
+            return await encryptCashlinkString(entropy, data);
         } finally { zeroEntropy(entropy); }
     },
 
