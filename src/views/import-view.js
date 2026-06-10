@@ -33,6 +33,8 @@ export function importView() {
         try {
             // Keyguard handles: word entry, validation, password entry
             await importWallet();
+            // Imported wallets may have prior Polygon history — allow deep scans
+            localStorage.removeItem('wallet-created-here');
             navigate('#dashboard');
         } catch (e) {
             if (e.message !== 'User cancelled') {

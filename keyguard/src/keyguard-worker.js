@@ -262,6 +262,44 @@ async function ensureWasm() {
     wasmReady = true;
 }
 
+// ── Polygon module (lazy) ──────────────────────────────────────────
+// ethers (~550 KB) is only loaded when a Polygon/stablecoin command runs.
+
+let polygonModPromise = null;
+
+function getPolygonMod() {
+    if (!polygonModPromise) polygonModPromise = import('./keyguard-polygon.js');
+    return polygonModPromise;
+}
+
+/**
+ * Derive the wallet-level Polygon address (m/44'/60'/0'/0/0) from entropy.
+ * The mnemonic string is unavoidably immutable — keep its lifetime to this
+ * function (same residual exposure as the original Nimiq Keyguard).
+ */
+async function derivePolygonAddressFromEntropy(entropy) {
+    const { derivePolygonAddress } = await getPolygonMod();
+    const words = MnemonicUtils.entropyToMnemonic(entropy);
+    const mnemonicString = Array.isArray(words) ? words.join(' ') : words;
+    return derivePolygonAddress(mnemonicString);
+}
+
+/**
+ * Decrypt the wallet entropy with either a PRF key or a password.
+ * Caller MUST zero the returned entropy in a finally block.
+ */
+async function decryptEntropy(record, { password, prfKey }) {
+    if (prfKey) return decryptWithPrfKey(record, prfKey);
+    const passwordBuf = new TextEncoder().encode(password);
+    try {
+        return await Secret.fromEncrypted(new SerialBuffer(record.secret), passwordBuf);
+    } catch (_) {
+        throw new Error('Wrong password');
+    } finally {
+        passwordBuf.fill(0);
+    }
+}
+
 // ── Temporary state for create flow ────────────────────────────────
 // Between createWallet() and saveWallet(), entropy lives only here.
 let pendingEntropy = null;
@@ -383,6 +421,12 @@ const handlers = {
             };
         }
 
+        // Best-effort: derive the Polygon (USDC/USDT) address while entropy
+        // is in memory; the settings activation flow is the recovery path.
+        try {
+            record.polygonAddress = await derivePolygonAddressFromEntropy(pendingEntropy);
+        } catch (_) {}
+
         await putActiveRecord(record);
 
         zeroEntropy(pendingEntropy);
@@ -429,6 +473,12 @@ const handlers = {
                     iv,
                 };
             }
+
+            // Best-effort: derive the Polygon (USDC/USDT) address while
+            // entropy is in memory; settings activation is the recovery path.
+            try {
+                record.polygonAddress = await derivePolygonAddressFromEntropy(entropy);
+            } catch (_) {}
 
             await putActiveRecord(record);
 
@@ -738,6 +788,12 @@ const handlers = {
                 iv,
             };
 
+            // Best-effort: derive the Polygon (USDC/USDT) address while
+            // entropy is in memory; settings activation is the recovery path.
+            try {
+                record.polygonAddress = await derivePolygonAddressFromEntropy(entropy);
+            } catch (_) {}
+
             await putActiveRecord(record);
 
             return { address: address.toUserFriendlyAddress() };
@@ -755,6 +811,64 @@ const handlers = {
         const request = tx.objectStore(STORE_NAME).put(record);
         await txPromise(request, tx);
         return { success: true };
+    },
+
+    // ── Polygon / stablecoin handlers ─────────────────────────────
+
+    async getPolygonAddress() {
+        const record = await getRecord();
+        if (!record) return { address: null };
+        return { address: record.polygonAddress || null };
+    },
+
+    async activatePolygon({ password, prfKey }) {
+        await ensureWasm();
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+
+        if (record.polygonAddress) return { address: record.polygonAddress };
+
+        const entropy = await decryptEntropy(record, { password, prfKey });
+        try {
+            record.polygonAddress = await derivePolygonAddressFromEntropy(entropy);
+        } finally {
+            zeroEntropy(entropy);
+        }
+
+        const db = await connectDB();
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const request = tx.objectStore(STORE_NAME).put(record);
+        await txPromise(request, tx);
+
+        return { address: record.polygonAddress };
+    },
+
+    // Validation + decoding only (no auth): the confirmation UI renders
+    // exclusively from this result, never from raw wallet-provided values.
+    async decodePolygonCalldata({ token, relayRequest }) {
+        const { decodeForDisplay } = await getPolygonMod();
+        return decodeForDisplay({ token, relayRequest });
+    },
+
+    async signPolygonTransaction({ token, relayRequest, permit, approval, password, prfKey }) {
+        await ensureWasm();
+        const record = await getRecord();
+        if (!record) throw new Error('No wallet found');
+
+        const polygonMod = await getPolygonMod();
+        // Validate BEFORE decrypting the key — fail closed on bad requests
+        polygonMod.validateAndParse({ token, relayRequest });
+
+        const entropy = await decryptEntropy(record, { password, prfKey });
+        try {
+            const words = MnemonicUtils.entropyToMnemonic(entropy);
+            const mnemonicString = Array.isArray(words) ? words.join(' ') : words;
+            return await polygonMod.signPolygonTransaction(mnemonicString, {
+                token, relayRequest, permit, approval,
+            });
+        } finally {
+            zeroEntropy(entropy);
+        }
     },
 
     async generateCashlinkKeys({ count }) {

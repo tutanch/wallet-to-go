@@ -1,8 +1,9 @@
 import { navigate } from '../router.js';
-import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount, syncThemeToKeyguard } from '../modules/keyguard-api.js';
-import { getSelectedNetwork, setSelectedNetwork, NETWORKS } from '../config.js';
+import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount, syncThemeToKeyguard, getPolygonAddress, activatePolygon } from '../modules/keyguard-api.js';
+import { getSelectedNetwork, setSelectedNetwork, NETWORKS, isStablecoinsEnabled } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+import { resetPolygonCache } from './dashboard-view.js';
 
 export function settingsView() {
     const el = document.createElement('div');
@@ -36,8 +37,17 @@ export function settingsView() {
                         <p class="nq-text faucet-link">
                             <a class="nq-link" id="faucet-link" target="_blank" rel="noopener">Get test NIM from faucet</a>
                         </p>
+                        <p class="nq-text nq-text-s">Stablecoins (USDC/USDT) are only available on mainnet.</p>
                     ` : ''}
                 </div>
+
+                ${isStablecoinsEnabled() ? `
+                <div class="settings-section" id="polygon-section">
+                    <h2 class="nq-label">Stablecoins (Polygon)</h2>
+                    <p class="nq-text" style="margin-bottom: 12px;" id="polygon-status">Checking…</p>
+                    <button class="nq-button-s" id="btn-polygon-activate" style="display: none;">Activate Polygon</button>
+                    <p class="nq-text error-text" id="polygon-error" style="display: none; margin-top: 8px;"></p>
+                </div>` : ''}
 
                 <div class="settings-section" id="security-section">
                     <h2 class="nq-label">Security</h2>
@@ -143,6 +153,8 @@ export function settingsView() {
         try {
             await deleteWallet();
             // Keyguard confirmed and deleted the wallet
+            resetPolygonCache();
+            localStorage.removeItem('wallet-created-here');
             await disconnect();
             navigate('#welcome');
         } catch (e) {
@@ -154,6 +166,47 @@ export function settingsView() {
             btn.textContent = 'Log Out';
         }
     });
+
+    // Stablecoins (Polygon) activation status
+    const polygonSection = el.querySelector('#polygon-section');
+    if (polygonSection) {
+        const statusEl = polygonSection.querySelector('#polygon-status');
+        const activateBtn = polygonSection.querySelector('#btn-polygon-activate');
+        const errorEl = polygonSection.querySelector('#polygon-error');
+
+        (async () => {
+            try {
+                const { address } = await getPolygonAddress();
+                if (address) {
+                    statusEl.textContent = `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`;
+                } else {
+                    statusEl.textContent = 'Activate to send and receive USDC/USDT with fees paid in the token itself.';
+                    activateBtn.style.display = '';
+                }
+            } catch (_) {
+                statusEl.textContent = 'Status unavailable.';
+            }
+        })();
+
+        activateBtn.addEventListener('click', async () => {
+            activateBtn.disabled = true;
+            activateBtn.textContent = 'Opening keyguard...';
+            errorEl.style.display = 'none';
+            try {
+                const { address } = await activatePolygon();
+                resetPolygonCache();
+                statusEl.textContent = `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`;
+                activateBtn.style.display = 'none';
+            } catch (e) {
+                activateBtn.disabled = false;
+                activateBtn.textContent = 'Activate Polygon';
+                if (e.message !== 'User cancelled') {
+                    errorEl.textContent = 'Activation failed. Please try again.';
+                    errorEl.style.display = '';
+                }
+            }
+        });
+    }
 
     // WebAuthn / biometric toggle
     const webauthnBtn = el.querySelector('#btn-webauthn');

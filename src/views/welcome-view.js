@@ -31,6 +31,8 @@ export function welcomeView() {
 
         try {
             await restoreWithPasskey({ allowOverwrite: true });
+            // Restored wallets may have prior Polygon history — allow deep scans
+            localStorage.removeItem('wallet-created-here');
             navigate('#dashboard');
         } catch (e) {
             btn.disabled = false;

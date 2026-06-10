@@ -701,3 +701,13 @@ textarea.nq-input {
 :root[data-theme="dark"] .verify-input.verify-wrong {
     background: rgba(217, 68, 50, 0.1);
 }
+
+/* ── Polygon (USDC/USDT) confirmation ── */
+
+.polygon-confirm .tx-value.polygon-address {
+    font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    word-break: break-all;
+    text-align: right;
+    max-width: 65%;
+}

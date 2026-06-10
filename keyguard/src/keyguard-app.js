@@ -1103,6 +1103,254 @@ function wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRe
     }
 }
 
+// ── Polygon (USDC/USDT) flows ────────────────────────────────────────────
+// SECURITY: the confirmation UI renders EXCLUSIVELY from the worker's
+// decodePolygonCalldata result — i.e. the values that will actually be
+// signed — never from wallet-supplied display strings.
+
+function renderPolygonLoading(text) {
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card">
+                <div class="keyguard-header">
+                    <h1>${escHtml(text)}</h1>
+                    <p>Please wait…</p>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderPolygonTxConfirm({ decoded, biometric, showPassword }) {
+    const biometricSection = biometric ? `
+        <div class="biometric-auth-section">
+            <button id="btn-biometric" type="button" class="biometric-trigger">
+                ${FINGERPRINT_SVG}
+                <span class="biometric-hint">Tap to sign</span>
+            </button>
+            <p class="error-text" id="error" style="display:none;"></p>
+        </div>` : '';
+
+    const footer = biometric ? `
+        <div class="keyguard-footer">
+            <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+            ${showPassword ? '<button id="btn-password" type="button" class="btn-secondary">Use Password</button>' : ''}
+        </div>` : `
+        <div class="keyguard-footer">
+            <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+            <button id="btn-confirm" type="button" class="btn-primary">Confirm &amp; Sign</button>
+        </div>`;
+
+    return `
+        <div class="keyguard-container">
+            <div class="keyguard-card polygon-confirm">
+                <div class="keyguard-header">
+                    <h1>Confirm Transaction</h1>
+                    <p class="tx-amount-large">${escHtml(decoded.amount)} ${escHtml(decoded.tokenSymbol)}</p>
+                </div>
+                <div class="keyguard-body">
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">To</span>
+                        <span class="tx-value polygon-address">${escHtml(decoded.recipient)}</span>
+                    </div>
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Fee</span>
+                        <span class="tx-value">${escHtml(decoded.fee)} ${escHtml(decoded.tokenSymbol)}</span>
+                    </div>
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Total</span>
+                        <span class="tx-value">${escHtml(decoded.total)} ${escHtml(decoded.tokenSymbol)}</span>
+                    </div>
+                    <div class="tx-confirm-row">
+                        <span class="tx-label">Network</span>
+                        <span class="tx-value">Polygon Mainnet</span>
+                    </div>
+                    ${biometricSection}
+                </div>
+                ${footer}
+            </div>
+        </div>`;
+}
+
+function showPasswordFormForPolygonSign(args, decoded) {
+    setUI(renderPasswordForm({
+        title: 'Enter Password to Sign',
+        subtitle: `Sending ${decoded.amount} ${decoded.tokenSymbol} on Polygon`,
+        isNew: false,
+    }));
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pw = ui.querySelector('#password').value;
+        const errorEl = ui.querySelector('#error');
+        if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+        const btn = ui.querySelector('#btn-submit');
+        setButtonState(btn, 'Signing...', true);
+        try {
+            const result = await callWorker('signPolygonTransaction', { ...args, password: pw });
+            ui.querySelector('#password').value = '';
+            resolveSession(result);
+        } catch (err) {
+            ui.querySelector('#password').value = '';
+            setButtonState(btn, 'Continue', false);
+            const msg = err.message?.includes('Wrong password')
+                ? 'Wrong password.'
+                : 'Signing failed. Please try again.';
+            showError(ui.querySelector('#error'), msg);
+        }
+    });
+}
+
+async function flowSignPolygonTransaction(args) {
+    showUI();
+    // The worker loads ethers (~550 KB) on first use — show progress meanwhile
+    setUI(renderPolygonLoading('Preparing Transaction'));
+
+    // Decode + validate in the worker; render ONLY from this result
+    let decoded;
+    try {
+        decoded = await callWorker('decodePolygonCalldata', {
+            token: args.token,
+            relayRequest: args.relayRequest,
+        });
+    } catch (err) {
+        rejectSession(err.message || 'Invalid Polygon request');
+        return;
+    }
+
+    const info = await callWorker('getWebAuthnInfo');
+    const passwordSet = await callWorker('hasPassword');
+
+    if (info.hasWebAuthn) {
+        setUI(renderPolygonTxConfirm({ decoded, biometric: true, showPassword: passwordSet }));
+
+        const biometricBtn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
+        biometricBtn.onclick = async () => {
+            biometricBtn.disabled = true;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
+            try {
+                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                const result = await callWorker('signPolygonTransaction', {
+                    ...args, prfKey: Array.from(prfKey),
+                });
+                prfKey.fill(0);
+                resolveSession(result);
+            } catch (err) {
+                biometricBtn.disabled = false;
+                biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
+                showError(errorEl, err.name === 'NotAllowedError'
+                    ? 'Cancelled. Tap to try again.'
+                    : 'Failed. Tap to try again.');
+            }
+        };
+
+        if (passwordSet) {
+            ui.querySelector('#btn-password').onclick = () => {
+                setUI('');
+                showPasswordFormForPolygonSign(args, decoded);
+            };
+        }
+    } else {
+        setUI(renderPolygonTxConfirm({ decoded }));
+        ui.querySelector('#btn-confirm').onclick = () => {
+            setUI('');
+            showPasswordFormForPolygonSign(args, decoded);
+        };
+    }
+
+    ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+}
+
+async function flowActivatePolygon() {
+    showUI();
+
+    const info = await callWorker('getWebAuthnInfo');
+    const passwordSet = await callWorker('hasPassword');
+
+    const showPasswordForm = () => {
+        setUI(renderPasswordForm({
+            title: 'Activate Polygon',
+            subtitle: 'Derives your Polygon address for USDC/USDT. One-time setup.',
+            isNew: false,
+        }));
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+        ui.querySelector('#pw-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const pw = ui.querySelector('#password').value;
+            const errorEl = ui.querySelector('#error');
+            if (!pw) { showError(errorEl, 'Please enter your password.'); return; }
+
+            const btn = ui.querySelector('#btn-submit');
+            setButtonState(btn, 'Activating...', true);
+            try {
+                const result = await callWorker('activatePolygon', { password: pw });
+                ui.querySelector('#password').value = '';
+                resolveSession(result);
+            } catch (err) {
+                ui.querySelector('#password').value = '';
+                setButtonState(btn, 'Continue', false);
+                const msg = err.message?.includes('Wrong password')
+                    ? 'Wrong password.'
+                    : 'Activation failed. Please try again.';
+                showError(ui.querySelector('#error'), msg);
+            }
+        });
+    };
+
+    if (info.hasWebAuthn) {
+        setUI(`
+            <div class="keyguard-container">
+                <div class="keyguard-card">
+                    <div class="keyguard-header">
+                        <h1>Activate Polygon</h1>
+                        <p>Derives your Polygon address for USDC/USDT. One-time setup.</p>
+                    </div>
+                    <div class="keyguard-body">
+                        <div class="biometric-auth-section">
+                            <button id="btn-biometric" type="button" class="biometric-trigger">
+                                ${FINGERPRINT_SVG}
+                                <span class="biometric-hint">Tap to activate</span>
+                            </button>
+                            <p class="error-text" id="error" style="display:none;"></p>
+                        </div>
+                    </div>
+                    <div class="keyguard-footer">
+                        <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
+                        ${passwordSet ? '<button id="btn-password" type="button" class="btn-secondary">Use Password</button>' : ''}
+                    </div>
+                </div>
+            </div>`);
+
+        const biometricBtn = ui.querySelector('#btn-biometric');
+        const errorEl = ui.querySelector('#error');
+        biometricBtn.onclick = async () => {
+            biometricBtn.disabled = true;
+            biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
+            try {
+                const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
+                const result = await callWorker('activatePolygon', { prfKey: Array.from(prfKey) });
+                prfKey.fill(0);
+                resolveSession(result);
+            } catch (err) {
+                biometricBtn.disabled = false;
+                biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to activate';
+                showError(errorEl, err.name === 'NotAllowedError'
+                    ? 'Cancelled. Tap to try again.'
+                    : 'Failed. Tap to try again.');
+            }
+        };
+
+        if (passwordSet) {
+            ui.querySelector('#btn-password').onclick = showPasswordForm;
+        }
+        ui.querySelector('#btn-cancel').onclick = () => rejectSession('User cancelled');
+    } else {
+        showPasswordForm();
+    }
+}
+
 // ── Batch transaction signing flow ───────────────────────────────────────
 
 async function flowSignBatchTransaction(args) {
@@ -1863,7 +2111,7 @@ window.addEventListener('message', async (event) => {
     if (!Number.isInteger(sessionId)) return;
 
     // Transparent passthroughs: no UI, immediate response via worker
-    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword', 'getDerivedAddresses', 'generateCashlinkKeys', 'getCashlinkAddresses', 'signCashlinkClaims'];
+    const PASSTHROUGH_COMMANDS = ['hasKey', 'getStoredAddress', 'getWebAuthnInfo', 'hasPassword', 'getDerivedAddresses', 'generateCashlinkKeys', 'getCashlinkAddresses', 'signCashlinkClaims', 'getPolygonAddress'];
     if (PASSTHROUGH_COMMANDS.includes(command)) {
         try {
             const result = await callWorker(command, args);
@@ -1898,6 +2146,8 @@ window.addEventListener('message', async (event) => {
         case 'switchAccount':    flowSwitchAccount(); break;
         case 'encryptCashlinkData': flowCashlinkCrypto(args || {}, 'encryptCashlinkData', 'Save Cashlinks'); break;
         case 'decryptCashlinkData': flowCashlinkCrypto(args || {}, 'decryptCashlinkData', 'View Saved Cashlinks'); break;
+        case 'activatePolygon':  flowActivatePolygon(); break;
+        case 'signPolygonTransaction': flowSignPolygonTransaction(args || {}); break;
         default:
             rejectSession(`Unknown command: ${command}`);
     }

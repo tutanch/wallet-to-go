@@ -1,7 +1,7 @@
 import { navigate } from '../router.js';
-import { getStoredAddress, getDerivedAddresses } from '../modules/keyguard-api.js';
+import { getStoredAddress, getDerivedAddresses, getPolygonAddress, activatePolygon } from '../modules/keyguard-api.js';
 import * as network from '../modules/network-client.js';
-import { formatNim, getSelectedNetwork } from '../config.js';
+import { formatNim, formatToken, getSelectedNetwork, isStablecoinsEnabled } from '../config.js';
 import { renderTxItem } from './history-view.js';
 import { showToast } from '../modules/toast.js';
 import { enablePullToRefresh } from '../modules/gestures.js';
@@ -17,6 +17,17 @@ function setActiveAddressIndex(idx) {
 
 // ── Module-level cache (survives navigation) ────────────────────
 const cache = { balance: null, consensus: 'connecting', recentTxs: [], headHeight: 0, address: null, network: null };
+
+// Polygon/stablecoin cache — wallet-level (independent of the NIM address
+// picker). address: undefined = not queried yet, null = not activated.
+const polygonCache = { address: undefined, balances: null, ts: 0 };
+
+/** Reset on logout/wallet switch so a new wallet doesn't see stale data. */
+export function resetPolygonCache() {
+    polygonCache.address = undefined;
+    polygonCache.balances = null;
+    polygonCache.ts = 0;
+}
 let bgGeneration = 0;
 let bgTeardown = null;
 let viewUpdate = null;   // current view's render callback
@@ -153,6 +164,13 @@ export async function dashboardView() {
                     <button class="nq-button-s" id="btn-batch-send">Batch Send</button>
                     <button class="nq-button-s" id="btn-cashlinks">Cashlinks</button>
                 </div>
+                ${isStablecoinsEnabled() ? `
+                <div class="stablecoins-section" id="stablecoins-section">
+                    <div class="section-header">
+                        <h2 class="nq-label">Stablecoins <span class="token-badge">Polygon</span></h2>
+                    </div>
+                    <div id="stablecoins-content"><p class="nq-text no-txs">Loading…</p></div>
+                </div>` : ''}
                 <div class="recent-txs">
                     <div class="section-header">
                         <h2 class="nq-label">Recent Transactions</h2>
@@ -297,6 +315,98 @@ export async function dashboardView() {
     el.querySelector('#btn-settings').addEventListener('click', () => navigate('#settings'));
     $btnAllTxs.addEventListener('click', () => navigate('#history'));
 
+    // ── Stablecoins (USDC/USDT on Polygon, wallet-level) ──────────
+    const $stablecoins = el.querySelector('#stablecoins-content');
+    let stablecoinsGone = false;
+
+    function renderStablecoinBalances() {
+        if (!$stablecoins || stablecoinsGone) return;
+        $stablecoins.innerHTML = '';
+        for (const token of ['usdc', 'usdt']) {
+            const row = document.createElement('div');
+            row.className = 'stablecoin-row';
+            const symbol = document.createElement('span');
+            symbol.className = 'stablecoin-symbol';
+            symbol.textContent = token.toUpperCase();
+            const amount = document.createElement('span');
+            amount.className = 'stablecoin-amount';
+            amount.textContent = polygonCache.balances
+                ? formatToken(polygonCache.balances[token])
+                : '…';
+            row.appendChild(symbol);
+            row.appendChild(amount);
+            $stablecoins.appendChild(row);
+        }
+    }
+
+    function renderStablecoinActivate() {
+        if (!$stablecoins || stablecoinsGone) return;
+        $stablecoins.innerHTML = '';
+        const hint = document.createElement('p');
+        hint.className = 'nq-text no-txs';
+        hint.textContent = 'Send and receive USDC/USDT with fees paid in the token itself.';
+        const btn = document.createElement('button');
+        btn.className = 'nq-button-s';
+        btn.textContent = 'Activate Polygon';
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = 'Waiting for keyguard…';
+            try {
+                const { address } = await activatePolygon();
+                polygonCache.address = address;
+                showToast('Polygon activated!', 'success');
+                // Created-here wallets: remember the activation block so
+                // history never scans before the wallet existed.
+                if (localStorage.getItem('wallet-created-here') === '1') {
+                    try {
+                        const [{ setScanFloor }, { getBlockNumber }] = await Promise.all([
+                            import('../modules/polygon/polygon-history.js'),
+                            import('../modules/polygon/polygon-client.js'),
+                        ]);
+                        await setScanFloor(address, await getBlockNumber());
+                    } catch (_) {}
+                }
+                refreshPolygon(true);
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Activate Polygon';
+                if (e.message !== 'User cancelled') {
+                    showToast('Activation failed', 'error');
+                }
+            }
+        });
+        $stablecoins.appendChild(hint);
+        $stablecoins.appendChild(btn);
+    }
+
+    async function refreshPolygon(force = false) {
+        if (!$stablecoins || stablecoinsGone) return;
+        try {
+            if (polygonCache.address === undefined) {
+                polygonCache.address = (await getPolygonAddress())?.address || null;
+            }
+            if (stablecoinsGone) return;
+            if (!polygonCache.address) {
+                renderStablecoinActivate();
+                return;
+            }
+            renderStablecoinBalances(); // cached values first
+            if (force || Date.now() - polygonCache.ts > 30000) {
+                const { getStablecoinBalances } = await import('../modules/polygon/polygon-client.js');
+                polygonCache.balances = await getStablecoinBalances(polygonCache.address);
+                polygonCache.ts = Date.now();
+                renderStablecoinBalances();
+            }
+        } catch (e) {
+            console.warn('Stablecoin refresh failed:', e);
+            if (!stablecoinsGone && $stablecoins && !polygonCache.balances) {
+                $stablecoins.innerHTML = '<p class="nq-text no-txs">Polygon network unavailable</p>';
+            }
+        }
+    }
+
+    if ($stablecoins) refreshPolygon();
+
     // ── Render from cache ───────────────────────────────────────
     function update() {
         const consensusClass = cache.consensus === 'established' ? 'consensus-ok' : 'consensus-syncing';
@@ -339,6 +449,7 @@ export async function dashboardView() {
     const cardBody = el.querySelector('.nq-card-body');
     const cleanupPull = enablePullToRefresh(cardBody, async () => {
         try {
+            if ($stablecoins) refreshPolygon(true); // non-blocking
             cache.balance = await network.getBalance(currentAddress);
             cache.recentTxs = await network.getHistory(currentAddress, 10);
             cache.headHeight = await network.getHeadHeight();
@@ -356,6 +467,7 @@ export async function dashboardView() {
         element: el,
         cleanup: () => {
             viewUpdate = null;
+            stablecoinsGone = true;
             closePicker();
             cleanupPull();
         },

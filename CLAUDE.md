@@ -29,6 +29,13 @@ src/
     keyguard-api.js         Cross-origin postMessage bridge to keyguard iframe
     network-client.js       Nimiq P2P client singleton (connect, balance, send TX)
     webauthn.js             WebAuthn delegation (keyguard can't call navigator.credentials)
+    polygon/                USDC/USDT on Polygon with OpenGSN gas abstraction (mainnet only)
+      polygon-abis.js       Trimmed contract ABI fragments
+      polygon-client.js     RPC provider w/ endpoint rotation, contracts, chunked getLogs
+      gsn-relay.js          Relay ping/discovery (RelayServerRegistered events) + POST /relay
+      gsn-fee.js            On-chain fee calc (Uniswap quoter — NO price APIs)
+      polygon-send.js       Transfer orchestration: nonces → fee → keyguard → relay → receipt
+      polygon-history.js    IndexedDB-cached Transfer-log history w/ GSN fee folding
   views/                    Each view is an async function returning HTMLElement or {element, cleanup}
     welcome-view.js         Landing: create, import, or passkey restore
     create-view.js          Delegates to keyguard for mnemonic + password
@@ -47,8 +54,12 @@ keyguard/                   Deployed to SEPARATE ORIGIN (different GitHub Pages 
   src/
     keyguard-app.js         Message handler, renders sensitive UI (passwords, mnemonics, TX confirm)
     keyguard-worker.js      Web Worker: all cryptography, key derivation, IndexedDB storage
+    keyguard-polygon.js     Worker-only module: Polygon derivation + EIP-712 signing + validation
     styles/keyguard.css
+  lib/ethers/               Vendored ethers v5.7.2 ESM (keyguard copy)
 lib/nimiq-core/             Pre-built Nimiq WASM binaries (crypto, consensus, TX building)
+lib/ethers/                 Vendored ethers v5.7.2 ESM build + loader (wallet copy)
+verify/                     Docker-only EIP-712 vector suite (NOT served; SW-excluded)
 scripts/
   deploy.sh                 Cross-origin deploy (pushes keyguard, generates wallet workflow)
   generate-sw.js            Generates sw.js with SHA-256 hashes of all served files
@@ -70,6 +81,43 @@ Both sides validate `event.origin` on every postMessage. The keyguard-worker.js 
 - Password encryption: nimiq-core's Secret.exportEncrypted.
 - Passkey encryption: AES-GCM with PRF-derived key. HKDF for cross-device restore.
 - Entropy is zeroed (`.fill(0)`) after use.
+
+### Stablecoins (USDC/USDT on Polygon)
+
+Mainnet-only (`isStablecoinsEnabled()` gates every UI entry; Nimiq never
+deployed the Amoy testnet contracts). Gas abstraction via OpenGSN v2 reusing
+Nimiq's deployed infrastructure — users pay fees in the token itself:
+
+- Polygon address: `m/44'/60'/0'/0/0`, derived from the SAME entropy,
+  **hardcoded in the keyguard** (never a request parameter). Stored as
+  `record.polygonAddress`; one wallet-level address, independent of the NIM
+  address picker. Existing wallets activate via an authenticated
+  `activatePolygon` flow; new wallets auto-derive at create/import/restore.
+- 1 USDC/USDT = 1,000,000 base units (6 decimals). `tokenToUnits()` uses the
+  same string-math pattern as `nimToLuna()`. All fee math in ethers BigNumber.
+- **No price/data APIs**: balances + history via public keyless JSON-RPC,
+  POL→token rate via the on-chain Uniswap v3 quoter (`gsn-fee.js`), relay via
+  the OpenGSN network (Fastspot relay). Three different nonces exist — USDC
+  `nonces()` (EIP-2612), USDT `getNonce()` (meta-tx), and the forwarder
+  `transferContract.getNonce()` (goes in `relayRequest.request.nonce`).
+- **Keyguard trust boundary**: the wallet builds a relayRequest whose
+  calldata has dummy signature fields; `keyguard-polygon.js` validates it
+  against hardcoded contract constants (transfer-contract allowlist,
+  approval === amount + fee, pctRelayFee ≤ 70, …), renders the confirm UI
+  exclusively from its own decoded values, RE-ENCODES the calldata with real
+  signatures, and signs the GSN EIP-712 payload. The wallet must submit the
+  keyguard-returned relayRequest. The keyguard stays offline.
+- **CSP coupling**: `index.html` connect-src is an explicit allowlist that
+  MUST stay in sync with `POLYGON.rpcUrls` and `POLYGON.allowedRelayOrigins`
+  in `src/config.js`. Adding an RPC/relay = one line in each place.
+- ethers v5.7.2 is vendored (NO CDN) in `lib/ethers/` and
+  `keyguard/lib/ethers/`; always `await import(...)` it lazily so NIM-only
+  users never pay the ~550 KB cost. The SW skips per-fetch re-hashing for it
+  (install-time hash still enforced).
+- EIP-712 correctness is locked by `verify/eip712-vectors.js` (12 checks:
+  parity with @opengsn/common TypedRequestData, on-chain DOMAIN_SEPARATORs,
+  tamper rejection). Run it in Docker (`node:24`, see file header) after ANY
+  change to `keyguard-polygon.js`.
 
 ## Cross-origin deploy
 

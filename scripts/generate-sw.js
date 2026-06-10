@@ -30,6 +30,7 @@ const EXCLUDE = new Set([
     '.nojekyll',
     'README.md',
     '.claude',
+    'verify',       // Docker-only test suite — never served
 ]);
 
 function walk(dir) {
@@ -127,11 +128,11 @@ self.addEventListener('activate', (event) => {
 });
 
 // ── Fetch: cache-first with hash re-verification ─────────────────────────
-// Skip re-verification for large binary files (.wasm) that were already
-// verified at install time — hashing multi-MB files on every fetch adds
-// noticeable latency.
+// Skip re-verification for large binary files (.wasm, the vendored ethers
+// bundle) that were already verified at install time — hashing multi-MB
+// files on every fetch adds noticeable latency.
 const SKIP_REVERIFY = new Set(
-    Object.keys(FILE_HASHES).filter(p => p.endsWith('.wasm')),
+    Object.keys(FILE_HASHES).filter(p => p.endsWith('.wasm') || p.endsWith('ethers.esm.min.js')),
 );
 
 self.addEventListener('fetch', (event) => {

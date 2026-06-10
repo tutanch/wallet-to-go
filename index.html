@@ -9,8 +9,14 @@
         - Removed https://cdn.jsdelivr.net from all directives (assets now self-hosted)
         - Added frame-src for keyguard iframe origin
         Replace [KEYGUARD_ORIGIN] before deploying, e.g. https://nimiq-wallet-keyguard.github.io
+
+        connect-src is an EXPLICIT allowlist (no blanket https:) to preserve
+        exfiltration protection. The four Polygon RPC endpoints and the GSN
+        relay origin MUST stay in sync with POLYGON.rpcUrls /
+        POLYGON.allowedRelayOrigins in src/config.js. Adding a relay or RPC =
+        one line here + one line there.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-pJC4gS7fEJ2sD+197b4a+ot2JC9A5BR+IiRkBc7vMMk='; style-src 'self' 'unsafe-inline'; connect-src 'self' wss:; worker-src 'self' blob:; frame-src [KEYGUARD_ORIGIN]; img-src 'self' data:; form-action 'self'; base-uri 'self'; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-pJC4gS7fEJ2sD+197b4a+ot2JC9A5BR+IiRkBc7vMMk='; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: https://polygon-bor-rpc.publicnode.com https://gateway.tenderly.co https://polygon.api.onfinality.io https://polygon.drpc.org https://gsn.main.fastspot.io; worker-src 'self' blob:; frame-src [KEYGUARD_ORIGIN]; img-src 'self' data:; form-action 'self'; base-uri 'self'; object-src 'none'">
     <title>Nimiq Wallet</title>
     <link rel="icon" href="public/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="src/styles/app.css">

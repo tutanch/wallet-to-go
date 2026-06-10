@@ -33,6 +33,8 @@ export async function createView() {
         try {
             // Keyguard handles: mnemonic display, backup confirmation, password entry
             await createWallet();
+            // Brand-new wallet: its Polygon history starts now (scan floor)
+            localStorage.setItem('wallet-created-here', '1');
             navigate('#dashboard');
         } catch (e) {
             if (e.message !== 'User cancelled') {

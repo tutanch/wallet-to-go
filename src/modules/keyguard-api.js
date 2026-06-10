@@ -151,6 +151,7 @@ const UI_COMMANDS = new Set([
     'exportMnemonic', 'deleteWallet', 'unlock', 'restoreWithPasskey',
     'registerWebAuthn', 'removeWebAuthn', 'switchAccount',
     'encryptCashlinkData', 'decryptCashlinkData',
+    'activatePolygon', 'signPolygonTransaction',
 ]);
 
 function call(command, args, timeoutMs = 120000) {
@@ -254,6 +255,41 @@ export function signTransaction({ senderAddress, recipientAddress, value, fee, m
  */
 export function signBatchTransaction({ senderAddress, transactions, addressIndex, encryptData }) {
     return call('signBatchTransaction', { senderAddress, transactions, addressIndex, encryptData }, 300000);
+}
+
+// ── Polygon / stablecoins (USDC + USDT) ────────────────────────────────────
+
+/**
+ * Get the wallet-level Polygon address (m/44'/60'/0'/0/0). No UI shown.
+ * Returns { address: string | null } — null means Polygon support has not
+ * been activated for this wallet yet (see activatePolygon).
+ */
+export function getPolygonAddress() {
+    return call('getPolygonAddress', null, 15000);
+}
+
+/**
+ * One-time Polygon activation for existing wallets: the keyguard asks for
+ * authentication, derives the Polygon address from the wallet entropy and
+ * stores it. Returns { address }.
+ */
+export function activatePolygon() {
+    return call('activatePolygon');
+}
+
+/**
+ * Sign a USDC/USDT transfer relayRequest (OpenGSN). The keyguard decodes
+ * and validates the request, displays amount/recipient/fee, asks for
+ * authentication, RE-ENCODES the calldata with its own signatures and signs
+ * the GSN typed data. ALWAYS submit the returned relayRequest (not the one
+ * passed in) — the keyguard's re-encoded calldata is the signed one.
+ *
+ * @param {{token: 'usdc'|'usdt', relayRequest: object,
+ *          permit?: {tokenNonce: number}, approval?: {tokenNonce: number}}} args
+ * @returns {Promise<{relayRequest: object, signature: string}>}
+ */
+export function signPolygonTransaction(args) {
+    return call('signPolygonTransaction', args, 300000);
 }
 
 /**
