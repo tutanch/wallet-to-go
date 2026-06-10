@@ -64,17 +64,21 @@ function isNetworkError(error) {
 }
 
 /**
- * Run fn(provider) and retry once on the fallback endpoint for
+ * Run fn(provider), rotating through ALL configured endpoints on
  * network-level errors. Contract reverts etc. are NOT retried.
  */
 export async function withRpcFallback(fn) {
-    try {
-        return await fn(await getProvider());
-    } catch (error) {
-        if (!isNetworkError(error) || POLYGON.rpcUrls.length < 2) throw error;
-        await switchRpc();
-        return fn(await getProvider());
+    let lastError;
+    for (let attempt = 0; attempt < POLYGON.rpcUrls.length; attempt++) {
+        try {
+            return await fn(await getProvider()); // eslint-disable-line no-await-in-loop
+        } catch (error) {
+            if (!isNetworkError(error)) throw error;
+            lastError = error;
+            await switchRpc(); // eslint-disable-line no-await-in-loop
+        }
     }
+    throw lastError;
 }
 
 export async function getContracts() {

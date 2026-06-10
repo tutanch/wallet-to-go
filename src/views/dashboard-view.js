@@ -379,18 +379,47 @@ export async function dashboardView() {
         $stablecoins.appendChild(btn);
     }
 
+    function renderStablecoinError(message) {
+        if (!$stablecoins || stablecoinsGone || polygonCache.balances) return;
+        $stablecoins.innerHTML = '';
+        const hint = document.createElement('p');
+        hint.className = 'nq-text no-txs';
+        hint.textContent = message;
+        const retry = document.createElement('button');
+        retry.className = 'nq-button-s';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => {
+            $stablecoins.innerHTML = '<p class="nq-text no-txs">Loading…</p>';
+            refreshPolygon(true);
+        });
+        $stablecoins.appendChild(hint);
+        $stablecoins.appendChild(retry);
+    }
+
     async function refreshPolygon(force = false) {
         if (!$stablecoins || stablecoinsGone) return;
+
+        // Keyguard call first — its failures are NOT network problems
+        // (e.g. an outdated keyguard origin right after a deploy).
         try {
             if (polygonCache.address === undefined) {
                 polygonCache.address = (await getPolygonAddress())?.address || null;
             }
-            if (stablecoinsGone) return;
-            if (!polygonCache.address) {
-                renderStablecoinActivate();
-                return;
-            }
-            renderStablecoinBalances(); // cached values first
+        } catch (e) {
+            console.warn('Keyguard polygon query failed:', e);
+            renderStablecoinError(e.message?.includes('Unknown command')
+                ? 'Keyguard is updating — reload in a minute.'
+                : 'Keyguard unavailable.');
+            return;
+        }
+        if (stablecoinsGone) return;
+        if (!polygonCache.address) {
+            renderStablecoinActivate();
+            return;
+        }
+
+        renderStablecoinBalances(); // cached values first
+        try {
             if (force || Date.now() - polygonCache.ts > 30000) {
                 const { getStablecoinBalances } = await import('../modules/polygon/polygon-client.js');
                 polygonCache.balances = await getStablecoinBalances(polygonCache.address);
@@ -398,10 +427,8 @@ export async function dashboardView() {
                 renderStablecoinBalances();
             }
         } catch (e) {
-            console.warn('Stablecoin refresh failed:', e);
-            if (!stablecoinsGone && $stablecoins && !polygonCache.balances) {
-                $stablecoins.innerHTML = '<p class="nq-text no-txs">Polygon network unavailable</p>';
-            }
+            console.warn('Stablecoin balance refresh failed:', e);
+            renderStablecoinError('Polygon network unavailable.');
         }
     }
 
