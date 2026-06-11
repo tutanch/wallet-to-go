@@ -13,6 +13,7 @@ import { settingsView } from './views/settings-view.js';
 import { lockView } from './views/lock-view.js';
 import { batchSendView } from './views/batch-send-view.js';
 import { cashlinksView } from './views/cashlinks-view.js';
+import { assetView } from './views/asset-view.js';
 
 // Register service worker for integrity-pinned caching.
 // Non-blocking — does not delay app startup.
@@ -101,6 +102,9 @@ async function init() {
         registerRoute('#lock', () => lockView());
         registerRoute('#batch-send', () => batchSendView());
         registerRoute('#cashlinks', () => cashlinksView());
+        registerRoute('#asset-nim', () => assetView('nim'));
+        registerRoute('#asset-usdc', () => assetView('usdc'));
+        registerRoute('#asset-usdt', () => assetView('usdt'));
 
         // If wallet exists, go to dashboard (or lock screen); otherwise show welcome
         const walletExists = await hasKey();

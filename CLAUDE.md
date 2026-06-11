@@ -12,10 +12,10 @@ If new files or directories are added to the repo that should NOT be cached by t
 
 ## Design tokens — keep wallet and keyguard in sync
 
-The design language ("instrument panel": flat surfaces, hairline rules, one
-shadow level for true overlays, mono tabular figures for all amounts) lives in
-a token block between `/* == DESIGN TOKENS ... == */` sentinel comments at the
-top of BOTH `src/styles/app.css` and `keyguard/src/styles/keyguard.css`. The
+The design language (soft-depth premium: layered shadows, pill actions,
+asset-colored badges, tabular figures for all amounts) lives in a token block
+between `/* == DESIGN TOKENS ... == */` sentinel comments at the top of BOTH
+`src/styles/app.css` and `keyguard/src/styles/keyguard.css`. The
 two origins cannot share a file at runtime, so the blocks are duplicated —
 **any token change must be made in both files**. `scripts/generate-sw.js`
 compares the blocks (comments ignored) and warns on drift at every deploy.

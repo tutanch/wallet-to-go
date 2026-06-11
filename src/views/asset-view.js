@@ -1,0 +1,185 @@
+import { navigate } from '../router.js';
+import { getStoredAddress, getDerivedAddresses, getPolygonAddress } from '../modules/keyguard-api.js';
+import { getActiveAddressIndex } from './dashboard-view.js';
+import * as network from '../modules/network-client.js';
+import { formatNim, formatToken, isStablecoinsEnabled, ASSETS } from '../config.js';
+import { renderTxItem, renderSkeletonRows, mountTokenHistory } from './history-view.js';
+import { showToast } from '../modules/toast.js';
+import { enableSwipeBack } from '../modules/gestures.js';
+
+/**
+ * Per-asset view: balance, address, Send/Receive preselected for the asset,
+ * and the asset's full activity. This is the dedicated home each asset row
+ * on the dashboard opens.
+ */
+export async function assetView(asset) {
+    const meta = ASSETS[asset];
+    const defaultAddress = await getStoredAddress();
+    if (!defaultAddress || !meta) {
+        navigate('#welcome');
+        return document.createElement('div');
+    }
+
+    // Active NIM address (derived address picker)
+    const activeIdx = getActiveAddressIndex();
+    let nimAddress = defaultAddress;
+    try {
+        const result = await getDerivedAddresses();
+        if (result?.addresses?.[activeIdx]) {
+            nimAddress = result.addresses[activeIdx].address;
+        }
+    } catch (_) {}
+
+    // Token views need an activated Polygon address
+    let polygonAddress = null;
+    if (asset !== 'nim') {
+        if (!isStablecoinsEnabled()) {
+            navigate('#dashboard');
+            return document.createElement('div');
+        }
+        try {
+            polygonAddress = (await getPolygonAddress())?.address || null;
+        } catch (_) {}
+        if (!polygonAddress) {
+            navigate('#dashboard');
+            return document.createElement('div');
+        }
+    }
+
+    const displayAddress = asset === 'nim' ? nimAddress : polygonAddress;
+
+    const el = document.createElement('div');
+    el.className = 'view-container';
+    el.innerHTML = `
+        <div class="nq-card">
+            <div class="nq-card-header">
+                <div class="asset-hero">
+                    <span class="asset-badge" id="a-badge" aria-hidden="true">${meta.symbol}</span>
+                    <h1 class="nq-h1" style="margin: 10px 0 0;">${meta.name}</h1>
+                    <p class="nq-text-s">${meta.network}</p>
+                </div>
+                <div class="balance-display">
+                    <span class="balance-amount" id="a-balance" aria-live="polite">…</span>
+                    <span class="balance-currency">${meta.symbol}</span>
+                </div>
+                <div class="address-display" id="address-copy" title="Click to copy" role="button" tabindex="0" aria-label="Copy address">
+                    <span class="address-text" id="a-address"></span>
+                </div>
+            </div>
+            <div class="nq-card-body">
+                <div class="action-buttons">
+                    <button class="nq-button light-blue" id="btn-send">Send</button>
+                    <button class="nq-button green" id="btn-receive">Receive</button>
+                </div>
+                <div class="section-header">
+                    <h2 class="nq-label">Activity</h2>
+                </div>
+                <div class="tx-list" id="a-tx-list"></div>
+                <p class="nq-text-s" id="scan-info" aria-live="polite" style="display:none; text-align:center; margin: 12px 0;"></p>
+                <button class="nq-button-s" id="btn-load-older" style="display:none;">Load older</button>
+            </div>
+            <div class="nq-card-footer">
+                <button class="nq-button-s" id="btn-back">Back</button>
+            </div>
+        </div>
+    `;
+
+    el.querySelector('#a-badge').style.background = meta.color;
+    el.querySelector('#a-address').textContent = displayAddress;
+
+    let gone = false;
+
+    // ── Balance ────────────────────────────────────────────────────────────
+    const $balance = el.querySelector('#a-balance');
+    (async () => {
+        try {
+            if (asset === 'nim') {
+                const balance = await network.getBalance(nimAddress);
+                if (!gone) $balance.textContent = formatNim(balance);
+            } else {
+                const { getStablecoinBalances } = await import('../modules/polygon/polygon-client.js');
+                const balances = await getStablecoinBalances(polygonAddress);
+                if (!gone) $balance.textContent = formatToken(balances[asset]);
+            }
+        } catch (_) {
+            if (!gone) $balance.textContent = '—';
+        }
+    })();
+
+    // ── Copy address ───────────────────────────────────────────────────────
+    async function copyAddress() {
+        try {
+            await navigator.clipboard.writeText(displayAddress);
+            const display = el.querySelector('#address-copy');
+            display.classList.add('copied');
+            showToast('Address copied!', 'success');
+            setTimeout(() => display.classList.remove('copied'), 600);
+        } catch (_) {}
+    }
+    el.querySelector('#address-copy').addEventListener('click', copyAddress);
+    el.querySelector('#address-copy').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            copyAddress();
+        }
+    });
+
+    // ── Send / Receive preselect this asset ───────────────────────────────
+    el.querySelector('#btn-send').addEventListener('click', () => {
+        sessionStorage.setItem('preselect-asset', asset);
+        navigate('#send');
+    });
+    el.querySelector('#btn-receive').addEventListener('click', () => {
+        sessionStorage.setItem('preselect-receive', asset === 'nim' ? 'nim' : 'polygon');
+        navigate('#receive');
+    });
+
+    el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
+
+    // ── Activity ───────────────────────────────────────────────────────────
+    const txList = el.querySelector('#a-tx-list');
+    const loadOlderBtn = el.querySelector('#btn-load-older');
+    const scanInfo = el.querySelector('#scan-info');
+
+    if (asset === 'nim') {
+        (async () => {
+            txList.appendChild(renderSkeletonRows(4));
+            try {
+                const txs = await network.getHistory(nimAddress, 50);
+                if (gone) return;
+                txList.innerHTML = '';
+                if (txs.length === 0) {
+                    txList.innerHTML = '<p class="nq-text no-txs">No transactions yet</p>';
+                } else {
+                    txs.forEach((tx) => txList.appendChild(renderTxItem(tx, nimAddress)));
+                }
+            } catch (e) {
+                if (gone) return;
+                txList.innerHTML = '';
+                const errorP = document.createElement('p');
+                errorP.className = 'nq-text error-text';
+                errorP.setAttribute('role', 'alert');
+                errorP.textContent = 'Failed to load: ' + e.message;
+                txList.appendChild(errorP);
+            }
+        })();
+    } else {
+        mountTokenHistory({
+            list: txList,
+            loadOlderBtn,
+            scanInfo,
+            polygonAddress,
+            token: asset,
+            isActive: () => !gone,
+        });
+    }
+
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    return {
+        element: el,
+        cleanup: () => {
+            gone = true;
+            cleanupSwipe();
+        },
+    };
+}

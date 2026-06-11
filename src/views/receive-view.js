@@ -72,9 +72,12 @@ export async function receiveView() {
         const qrFill = styles.getPropertyValue('--color-qr-fill').trim() || '#1F2348';
         const qrBg = styles.getPropertyValue('--color-qr-bg').trim() || '#ffffff';
         renderQr({
+            // Plain addresses, no URI scheme: any camera app shows something
+            // actionable, wallet scanners accept them, and the space-free NQ
+            // form encodes in alphanumeric mode (sparser, easier to scan).
             text: activeAsset === 'nim'
-                ? `nimiq:${address.replace(/ /g, '')}`
-                : polygonAddress, // raw 0x address — broadly scannable
+                ? address.replace(/ /g, '')
+                : polygonAddress,
             radius: 0.4,
             fill: qrFill,
             background: qrBg,
@@ -132,6 +135,13 @@ export async function receiveView() {
     });
 
     el.querySelector('#address-text').textContent = address;
+
+    // Asset views preselect their asset (sessionStorage handshake)
+    const preselect = sessionStorage.getItem('preselect-receive');
+    sessionStorage.removeItem('preselect-receive');
+    if (preselect === 'polygon' && polygonAddress) {
+        el.querySelector('#receive-toggle [data-asset="polygon"]')?.click();
+    }
 
     // Generate QR code using native encoder
     setTimeout(drawQr, 0);

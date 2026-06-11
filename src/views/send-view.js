@@ -91,16 +91,26 @@ export async function sendView() {
                 </div>
                 <div class="form-group">
                     <label class="nq-label" for="amount">Amount (NIM)</label>
-                    <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.00001" min="0">
+                    <div class="amount-with-max">
+                        <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.00001" min="0">
+                        <button class="nq-button-s" id="btn-max" type="button">Max</button>
+                    </div>
+                    <p class="field-hint"><span id="nim-balance" aria-live="polite">Balance: …</span></p>
                 </div>
                 <div class="form-group">
                     <label class="nq-label" for="message">Message (optional, max 64 bytes)</label>
                     <input type="text" class="nq-input" id="message" placeholder="Optional message">
                 </div>
-                <div class="form-group">
-                    <label class="nq-label" for="fee">Fee (luna)</label>
-                    <input type="number" class="nq-input" id="fee" placeholder="0" value="0" min="0" step="1">
-                </div>
+                <details class="advanced">
+                    <summary>Advanced</summary>
+                    <div class="advanced-body">
+                        <div class="form-group">
+                            <label class="nq-label" for="fee">Fee (luna)</label>
+                            <input type="number" class="nq-input" id="fee" placeholder="0" value="0" min="0" step="1">
+                        </div>
+                    </div>
+                </details>
+                <p class="nq-text-s" id="net-status" aria-live="polite" style="display: none; text-align: center;"></p>
                 <p class="nq-text error-text" id="warning" role="alert" style="display: none;"></p>
                 <p class="nq-text error-text" id="error" role="alert" style="display: none;"></p>
                 <div class="success-message" id="success" role="status" style="display: none;">
@@ -116,9 +126,55 @@ export async function sendView() {
 
         let sending = false; // Prevent double-send
         let selfSendConfirmed = false; // Track if user confirmed self-send
+        let nimGone = false;
+        let balanceLuna = null;
 
         panel.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
         panel.querySelector('#recipient').addEventListener('input', () => { selfSendConfirmed = false; });
+
+        // Balance + Max (parity with the token panel)
+        const balanceEl = panel.querySelector('#nim-balance');
+        (async () => {
+            try {
+                const balance = await network.getBalance(address);
+                if (nimGone) return;
+                balanceLuna = balance;
+                balanceEl.textContent = `Balance: ${formatNim(balance)} NIM`;
+            } catch (_) {
+                if (!nimGone) balanceEl.textContent = '';
+            }
+        })();
+
+        panel.querySelector('#btn-max').addEventListener('click', () => {
+            if (balanceLuna == null) return;
+            const feeValue = Math.max(0, parseInt(panel.querySelector('#fee').value) || 0);
+            const maxLuna = Math.max(0, balanceLuna - feeValue);
+            panel.querySelector('#amount').value = (maxLuna / 100000).toFixed(5).replace(/\.?0+$/, '');
+        });
+
+        // Surface network state where the action happens — sending waits on
+        // consensus, so say so instead of failing with a timeout later.
+        const netStatus = panel.querySelector('#net-status');
+        let netTimer = null;
+        async function checkNet() {
+            try {
+                const ok = await network.isConsensusEstablished();
+                if (nimGone) return;
+                if (ok) {
+                    netStatus.style.display = 'none';
+                    if (netTimer) { clearInterval(netTimer); netTimer = null; }
+                } else {
+                    netStatus.textContent = 'Connecting to the network — sending waits for sync.';
+                    netStatus.style.display = '';
+                }
+            } catch (_) {}
+        }
+        checkNet();
+        netTimer = setInterval(checkNet, 2000);
+        panelCleanup = () => {
+            nimGone = true;
+            if (netTimer) { clearInterval(netTimer); netTimer = null; }
+        };
 
         panel.querySelector('#btn-send').addEventListener('click', async () => {
             if (sending) return;
@@ -411,7 +467,14 @@ export async function sendView() {
         });
     }
 
-    switchAsset('nim');
+    // Asset views preselect their asset (sessionStorage handshake)
+    let initialAsset = 'nim';
+    const preselect = sessionStorage.getItem('preselect-asset');
+    sessionStorage.removeItem('preselect-asset');
+    if (preselect && preselect !== 'nim' && polygonAddress && POLYGON[preselect]) {
+        initialAsset = preselect;
+    }
+    switchAsset(initialAsset);
 
     const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
     return {

@@ -2,8 +2,14 @@ import { navigate } from '../router.js';
 import { getStoredAddress, getDerivedAddresses, getPolygonAddress } from '../modules/keyguard-api.js';
 import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
-import { formatNim, formatToken, isStablecoinsEnabled } from '../config.js';
+import { formatNim, formatToken, isStablecoinsEnabled, ASSETS, getExplorerTxUrl } from '../config.js';
+import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+
+// Scan-window sizes mirrored from polygon-history.js (for honest scan info)
+const INITIAL_SCAN_DAYS = 1;
+const LOAD_OLDER_DAYS = 4.6;
+const AUTO_DEEPEN_PAGES = 5; // keep scanning ~24 days back when history is empty
 
 export async function historyView() {
     const defaultAddress = await getStoredAddress();
@@ -43,11 +49,12 @@ export async function historyView() {
     el.innerHTML = `
         <div class="nq-card">
             <div class="nq-card-header">
-                <h1 class="nq-h1">Transaction History</h1>
+                <h1 class="nq-h1">Activity</h1>
                 ${tabs}
             </div>
             <div class="nq-card-body">
                 <div class="tx-list" id="tx-list"></div>
+                <p class="nq-text-s" id="scan-info" aria-live="polite" style="display:none; text-align:center; margin: 12px 0;"></p>
                 <button class="nq-button-s" id="btn-load-older" style="display:none;">Load older</button>
             </div>
             <div class="nq-card-footer">
@@ -60,19 +67,22 @@ export async function historyView() {
 
     const txList = el.querySelector('#tx-list');
     const loadOlderBtn = el.querySelector('#btn-load-older');
+    const scanInfo = el.querySelector('#scan-info');
     let activeAsset = 'nim';
     let gone = false;
 
-    // ── NIM history (unchanged behavior) ──────────────────────────────────
+    // ── NIM history ────────────────────────────────────────────────────────
     async function showNimHistory() {
         loadOlderBtn.style.display = 'none';
-        txList.innerHTML = '<p class="nq-text no-txs">Loading…</p>';
+        scanInfo.style.display = 'none';
+        txList.innerHTML = '';
+        txList.appendChild(renderSkeletonRows(4));
         try {
             const txs = await network.getHistory(address, 50);
             if (gone || activeAsset !== 'nim') return;
             txList.innerHTML = '';
             if (txs.length === 0) {
-                txList.innerHTML = '<p class="nq-text no-txs">No transactions found</p>';
+                txList.innerHTML = '<p class="nq-text no-txs">No transactions yet</p>';
             } else {
                 txs.forEach((tx) => txList.appendChild(renderTxItem(tx, address)));
             }
@@ -87,66 +97,16 @@ export async function historyView() {
         }
     }
 
-    // ── Token history (cached render → background sync → load older) ─────
-    async function showTokenHistory(token) {
-        loadOlderBtn.style.display = 'none';
-        loadOlderBtn.disabled = false;
-        loadOlderBtn.textContent = 'Load older';
-        txList.innerHTML = '<p class="nq-text no-txs">Loading…</p>';
-
-        try {
-            const history = await import('../modules/polygon/polygon-history.js');
-
-            const render = async () => {
-                const txs = await history.getCachedTxs(polygonAddress, token, { limit: 100 });
-                if (gone || activeAsset !== token) return;
-                await history.resolveTimestamps(txs).catch(() => {});
-                txList.innerHTML = '';
-                if (txs.length === 0) {
-                    txList.innerHTML = '<p class="nq-text no-txs">No transactions in the scanned range</p>';
-                } else {
-                    txs.forEach((tx) => txList.appendChild(renderTokenTxItem(tx)));
-                }
-                loadOlderBtn.style.display = '';
-            };
-
-            await render(); // cached rows immediately
-            await history.syncRecent(polygonAddress, token);
-            if (gone || activeAsset !== token) return;
-            await render();
-
-            loadOlderBtn.onclick = async () => {
-                loadOlderBtn.disabled = true;
-                loadOlderBtn.setAttribute('aria-busy', 'true');
-                loadOlderBtn.textContent = 'Scanning…';
-                try {
-                    const { reachedFloor } = await history.loadOlder(polygonAddress, token);
-                    if (gone || activeAsset !== token) return;
-                    await render();
-                    loadOlderBtn.removeAttribute('aria-busy');
-                    if (reachedFloor) {
-                        loadOlderBtn.disabled = true;
-                        loadOlderBtn.textContent = 'Beginning of history';
-                    } else {
-                        loadOlderBtn.disabled = false;
-                        loadOlderBtn.textContent = 'Load older';
-                    }
-                } catch (e) {
-                    if (gone || activeAsset !== token) return;
-                    loadOlderBtn.disabled = false;
-                    loadOlderBtn.removeAttribute('aria-busy');
-                    loadOlderBtn.textContent = 'Load older (failed — retry)';
-                }
-            };
-        } catch (e) {
-            if (gone || activeAsset !== token) return;
-            txList.innerHTML = '';
-            const errorP = document.createElement('p');
-            errorP.className = 'nq-text error-text';
-            errorP.setAttribute('role', 'alert');
-            errorP.textContent = 'Polygon network unavailable. Please try again.';
-            txList.appendChild(errorP);
-        }
+    // ── Token history (shared engine, also used by the asset view) ────────
+    function showTokenHistory(token) {
+        return mountTokenHistory({
+            list: txList,
+            loadOlderBtn,
+            scanInfo,
+            polygonAddress,
+            token,
+            isActive: () => !gone && activeAsset === token,
+        });
     }
 
     function switchTab(asset) {
@@ -178,18 +138,225 @@ export async function historyView() {
     };
 }
 
-// Build tx items with DOM API (not innerHTML) to prevent XSS from network data
+/**
+ * Token-history engine: cached render → recent sync → auto-deepen when empty.
+ * Shared by the Activity view and the per-asset view. The caller provides the
+ * DOM targets and an `isActive()` guard against stale renders after
+ * navigation or tab switches.
+ */
+export async function mountTokenHistory({ list, loadOlderBtn, scanInfo, polygonAddress, token, isActive }) {
+    loadOlderBtn.style.display = 'none';
+    loadOlderBtn.disabled = false;
+    loadOlderBtn.textContent = 'Load older';
+    scanInfo.style.display = 'none';
+    list.innerHTML = '';
+    list.appendChild(renderSkeletonRows(4));
+
+    let daysScanned = INITIAL_SCAN_DAYS;
+
+    try {
+        const history = await import('../modules/polygon/polygon-history.js');
+
+        const render = async () => {
+            const txs = await history.getCachedTxs(polygonAddress, token, { limit: 100 });
+            if (!isActive()) return 0;
+            await history.resolveTimestamps(txs).catch(() => {});
+            list.innerHTML = '';
+            if (txs.length === 0) {
+                list.innerHTML = '<p class="nq-text no-txs">No transfers in the scanned range</p>';
+            } else {
+                txs.forEach((tx) => list.appendChild(renderTokenTxItem(tx)));
+            }
+            loadOlderBtn.style.display = '';
+            return txs.length;
+        };
+
+        const updateScanInfo = (count, reachedFloor) => {
+            if (!isActive()) return;
+            scanInfo.style.display = '';
+            if (reachedFloor) {
+                scanInfo.textContent = count === 0
+                    ? 'Scanned the full history of this wallet — no transfers found.'
+                    : 'Scanned the full history of this wallet.';
+            } else {
+                scanInfo.textContent = `Scanned roughly the last ${Math.round(daysScanned)} days of Polygon history.`;
+            }
+        };
+
+        await render(); // cached rows immediately
+        await history.syncRecent(polygonAddress, token);
+        if (!isActive()) return;
+        let count = await render();
+
+        // Auto-deepen: an empty list with more history below the scan window
+        // reads as "no history available" — keep scanning instead of
+        // dead-ending on the user.
+        let reachedFloor = false;
+        if (count === 0) {
+            loadOlderBtn.disabled = true;
+            loadOlderBtn.setAttribute('aria-busy', 'true');
+            for (let page = 0; page < AUTO_DEEPEN_PAGES && count === 0 && !reachedFloor; page++) {
+                loadOlderBtn.textContent = 'Scanning older history…';
+                try {
+                    const res = await history.loadOlder(polygonAddress, token);
+                    reachedFloor = res.reachedFloor;
+                    daysScanned += LOAD_OLDER_DAYS;
+                } catch (_) {
+                    break; // RPC hiccup — leave manual "Load older" available
+                }
+                if (!isActive()) return;
+                count = await render();
+            }
+            loadOlderBtn.disabled = reachedFloor;
+            loadOlderBtn.removeAttribute('aria-busy');
+            loadOlderBtn.textContent = reachedFloor ? 'Beginning of history' : 'Load older';
+        }
+        updateScanInfo(count, reachedFloor);
+
+        loadOlderBtn.onclick = async () => {
+            loadOlderBtn.disabled = true;
+            loadOlderBtn.setAttribute('aria-busy', 'true');
+            loadOlderBtn.textContent = 'Scanning…';
+            try {
+                const res = await history.loadOlder(polygonAddress, token);
+                daysScanned += LOAD_OLDER_DAYS;
+                if (!isActive()) return;
+                const n = await render();
+                updateScanInfo(n, res.reachedFloor);
+                loadOlderBtn.removeAttribute('aria-busy');
+                if (res.reachedFloor) {
+                    loadOlderBtn.disabled = true;
+                    loadOlderBtn.textContent = 'Beginning of history';
+                } else {
+                    loadOlderBtn.disabled = false;
+                    loadOlderBtn.textContent = 'Load older';
+                }
+            } catch (e) {
+                if (!isActive()) return;
+                loadOlderBtn.disabled = false;
+                loadOlderBtn.removeAttribute('aria-busy');
+                loadOlderBtn.textContent = 'Load older (failed — retry)';
+            }
+        };
+    } catch (e) {
+        if (!isActive()) return;
+        list.innerHTML = '';
+        const errorP = document.createElement('p');
+        errorP.className = 'nq-text error-text';
+        errorP.setAttribute('role', 'alert');
+        errorP.textContent = 'Polygon network unavailable. Please try again.';
+        list.appendChild(errorP);
+    }
+}
+
+// ── Shared renderers (DOM API only — never innerHTML for network data) ─────
+
+/** Skeleton placeholder rows shown while a list loads. */
+export function renderSkeletonRows(count = 3) {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < count; i++) {
+        const row = document.createElement('div');
+        row.className = 'skeleton-row';
+        row.setAttribute('aria-hidden', 'true');
+        const circle = document.createElement('div');
+        circle.className = 'skeleton skeleton-circle';
+        const line = document.createElement('div');
+        line.className = 'skeleton skeleton-line';
+        const short = document.createElement('div');
+        short.className = 'skeleton skeleton-line skeleton-line-short';
+        row.append(circle, line, short);
+        frag.appendChild(row);
+    }
+    return frag;
+}
+
+function shortAddress(addr, head, tail) {
+    if (!addr) return 'Unknown';
+    return addr.substring(0, head) + '…' + addr.substring(addr.length - tail);
+}
+
+function makeDetailRow(label, value, mono = true) {
+    const row = document.createElement('div');
+    row.className = 'tx-detail-row';
+    const l = document.createElement('span');
+    l.className = 'tx-detail-label';
+    l.textContent = label;
+    const v = document.createElement('span');
+    v.className = 'tx-detail-value';
+    if (!mono) v.style.fontFamily = 'inherit';
+    v.textContent = value;
+    row.append(l, v);
+    return row;
+}
+
+/**
+ * Wire a tx row to an expandable detail strip (built lazily on first open).
+ * `buildDetail` returns an HTMLElement with the full record.
+ */
+function makeExpandableEntry(row, buildDetail) {
+    const entry = document.createElement('div');
+    entry.className = 'tx-entry';
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('aria-expanded', 'false');
+    let detail = null;
+
+    function toggle() {
+        if (!detail) {
+            detail = buildDetail();
+            entry.appendChild(detail);
+        } else {
+            detail.style.display = detail.style.display === 'none' ? '' : 'none';
+        }
+        const open = detail.style.display !== 'none';
+        row.setAttribute('aria-expanded', String(open));
+    }
+
+    row.addEventListener('click', toggle);
+    row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggle();
+        }
+    });
+
+    entry.appendChild(row);
+    return entry;
+}
+
+function makeDetailActions(asset, txHash) {
+    const actions = document.createElement('div');
+    actions.className = 'tx-detail-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'nq-button-s';
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'Copy hash';
+    copyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+            await navigator.clipboard.writeText(txHash);
+            showToast('Hash copied!', 'success');
+        } catch (_) {}
+    });
+
+    const link = document.createElement('a');
+    link.className = 'nq-button-s';
+    link.href = getExplorerTxUrl(asset, txHash);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'View on explorer ↗';
+    link.addEventListener('click', (e) => e.stopPropagation());
+
+    actions.append(copyBtn, link);
+    return actions;
+}
+
+/** NIM transaction row with expandable details and explorer link. */
 export function renderTxItem(tx, ownAddress) {
     const isSent = tx.sender === ownAddress;
     const counterparty = isSent ? tx.recipient : tx.sender;
-    const shortAddr = counterparty
-        ? counterparty.substring(0, 9) + '...' + counterparty.substring(counterparty.length - 4)
-        : 'Unknown';
-
-    const timestamp = tx.timestamp
-        ? new Date(tx.timestamp).toLocaleString()
-        : 'Pending';
-
+    const timestamp = tx.timestamp ? new Date(tx.timestamp).toLocaleString() : 'Pending';
     const stateStr = tx.state === 'confirmed' ? '' : ` (${tx.state || 'pending'})`;
 
     const item = document.createElement('div');
@@ -198,6 +365,7 @@ export function renderTxItem(tx, ownAddress) {
     const dirDiv = document.createElement('div');
     dirDiv.className = 'tx-direction';
     dirDiv.setAttribute('aria-hidden', 'true');
+    dirDiv.style.background = ASSETS.nim.color;
     dirDiv.textContent = isSent ? '↑' : '↓';
 
     const detailsDiv = document.createElement('div');
@@ -205,33 +373,42 @@ export function renderTxItem(tx, ownAddress) {
 
     const addrSpan = document.createElement('span');
     addrSpan.className = 'tx-address';
-    addrSpan.textContent = shortAddr;
+    addrSpan.textContent = (isSent ? 'To ' : 'From ') + shortAddress(counterparty, 9, 4);
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'tx-time';
     timeSpan.textContent = timestamp + stateStr;
 
-    detailsDiv.appendChild(addrSpan);
-    detailsDiv.appendChild(timeSpan);
+    detailsDiv.append(addrSpan, timeSpan);
 
     const amountDiv = document.createElement('div');
     amountDiv.className = `tx-amount ${isSent ? 'amount-sent' : 'amount-received'}`;
-    amountDiv.textContent = `${isSent ? '-' : '+'}${formatNim(tx.value)} NIM`;
+    amountDiv.textContent = `${isSent ? '−' : '+'}${formatNim(tx.value)}`;
+    const symbolSpan = document.createElement('span');
+    symbolSpan.className = 'tx-amount-symbol';
+    symbolSpan.textContent = 'NIM';
+    amountDiv.appendChild(symbolSpan);
 
-    item.appendChild(dirDiv);
-    item.appendChild(detailsDiv);
-    item.appendChild(amountDiv);
+    item.append(dirDiv, detailsDiv, amountDiv);
 
-    return item;
+    return makeExpandableEntry(item, () => {
+        const detail = document.createElement('div');
+        detail.className = 'tx-detail';
+        detail.appendChild(makeDetailRow(isSent ? 'To' : 'From', counterparty || 'Unknown'));
+        detail.appendChild(makeDetailRow('Amount', `${formatNim(tx.value)} NIM`, false));
+        if (tx.fee) detail.appendChild(makeDetailRow('Fee', `${formatNim(tx.fee)} NIM`, false));
+        if (tx.transactionHash) detail.appendChild(makeDetailRow('Hash', tx.transactionHash));
+        detail.appendChild(makeDetailRow('Status', (tx.state || 'pending') + (tx.blockHeight ? ` · block ${tx.blockHeight.toLocaleString()}` : ''), false));
+        if (tx.transactionHash) detail.appendChild(makeDetailActions('nim', tx.transactionHash));
+        return detail;
+    });
 }
 
-// USDC/USDT history row (DOM API only — record values come from chain logs)
+/** USDC/USDT transfer row with expandable details and explorer link. */
 export function renderTokenTxItem(tx) {
-    const symbol = tx.token.toUpperCase();
+    const assetMeta = ASSETS[tx.token] || ASSETS.usdc;
+    const symbol = assetMeta.symbol;
     const counterparty = tx.incoming ? tx.sender : tx.recipient;
-    const shortAddr = counterparty
-        ? counterparty.substring(0, 8) + '...' + counterparty.substring(counterparty.length - 6)
-        : 'Unknown';
 
     const item = document.createElement('div');
     item.className = `tx-item ${tx.incoming ? 'tx-received' : 'tx-sent'}${tx.failed ? ' tx-failed' : ''}`;
@@ -239,6 +416,7 @@ export function renderTokenTxItem(tx) {
     const dirDiv = document.createElement('div');
     dirDiv.className = 'tx-direction';
     dirDiv.setAttribute('aria-hidden', 'true');
+    if (!tx.failed) dirDiv.style.background = assetMeta.color;
     dirDiv.textContent = tx.failed ? '✕' : tx.incoming ? '↓' : '↑';
 
     const detailsDiv = document.createElement('div');
@@ -246,7 +424,9 @@ export function renderTokenTxItem(tx) {
 
     const addrSpan = document.createElement('span');
     addrSpan.className = 'tx-address';
-    addrSpan.textContent = tx.failed ? 'Failed transfer' : shortAddr;
+    addrSpan.textContent = tx.failed
+        ? 'Failed transfer'
+        : (tx.incoming ? 'From ' : 'To ') + shortAddress(counterparty, 8, 6);
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'tx-time';
@@ -256,18 +436,32 @@ export function renderTokenTxItem(tx) {
         : '';
     timeSpan.textContent = timeStr + feeStr;
 
-    detailsDiv.appendChild(addrSpan);
-    detailsDiv.appendChild(timeSpan);
+    detailsDiv.append(addrSpan, timeSpan);
 
     const amountDiv = document.createElement('div');
     amountDiv.className = `tx-amount ${tx.incoming ? 'amount-received' : 'amount-sent'}`;
     amountDiv.textContent = tx.failed
-        ? `-${formatToken(tx.fee || 0)} ${symbol}`
-        : `${tx.incoming ? '+' : '-'}${formatToken(tx.value)} ${symbol}`;
+        ? `−${formatToken(tx.fee || 0)}`
+        : `${tx.incoming ? '+' : '−'}${formatToken(tx.value)}`;
+    const symbolSpan = document.createElement('span');
+    symbolSpan.className = 'tx-amount-symbol';
+    symbolSpan.textContent = symbol;
+    amountDiv.appendChild(symbolSpan);
 
-    item.appendChild(dirDiv);
-    item.appendChild(detailsDiv);
-    item.appendChild(amountDiv);
+    item.append(dirDiv, detailsDiv, amountDiv);
 
-    return item;
+    return makeExpandableEntry(item, () => {
+        const detail = document.createElement('div');
+        detail.className = 'tx-detail';
+        detail.appendChild(makeDetailRow(tx.incoming ? 'From' : 'To', counterparty || 'Unknown'));
+        detail.appendChild(makeDetailRow('Amount', `${formatToken(tx.value)} ${symbol}`, false));
+        if (tx.fee != null && !tx.incoming) {
+            detail.appendChild(makeDetailRow('Fee', `${formatToken(tx.fee)} ${symbol} (paid in token via relay)`, false));
+        }
+        if (tx.txHash) detail.appendChild(makeDetailRow('Hash', tx.txHash));
+        const status = tx.failed ? 'failed' : (tx.blockNumber > 0 ? `confirmed · block ${tx.blockNumber.toLocaleString()}` : 'pending');
+        detail.appendChild(makeDetailRow('Status', status, false));
+        if (tx.txHash) detail.appendChild(makeDetailActions(tx.token, tx.txHash));
+        return detail;
+    });
 }

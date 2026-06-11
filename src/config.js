@@ -2,6 +2,7 @@ export const NETWORKS = {
     main: {
         name: 'mainalbatross',
         id: 24,
+        explorerTxUrl: 'https://nimiq.watch/#',
         seeds: [
             '/dns4/aurora.seed.nimiq.com/tcp/443/wss',
             '/dns4/catalyst.seed.nimiq.network/tcp/443/wss',
@@ -22,6 +23,7 @@ export const NETWORKS = {
     test: {
         name: 'testalbatross',
         id: 5,
+        explorerTxUrl: 'https://test.nimiq.watch/#',
         seeds: [
             '/dns4/seed1.pos.nimiq-testnet.com/tcp/8443/wss',
             '/dns4/seed2.pos.nimiq-testnet.com/tcp/8443/wss',
@@ -35,6 +37,23 @@ export const NETWORKS = {
 const VALID_NETWORKS = Object.keys(NETWORKS);
 
 const LUNAS_PER_NIM = 100000;
+
+// ─── Asset metadata (display only — colors aid recognition, not meaning) ───
+
+export const ASSETS = {
+    nim:  { symbol: 'NIM',  name: 'Nimiq',      network: 'Nimiq',   color: '#E9B213' },
+    usdc: { symbol: 'USDC', name: 'USD Coin',   network: 'Polygon', color: '#2775CA' },
+    usdt: { symbol: 'USDT', name: 'Tether USD', network: 'Polygon', color: '#26A17B' },
+};
+
+/** Block-explorer URL for a transaction. Asset 'nim' follows the selected
+ *  network; tokens always live on Polygon mainnet. */
+export function getExplorerTxUrl(asset, txHash) {
+    if (asset === 'nim') {
+        return getNetworkConfig().explorerTxUrl + txHash;
+    }
+    return 'https://polygonscan.com/tx/' + txHash;
+}
 
 export function getSelectedNetwork() {
     const stored = localStorage.getItem('nimiq-network');
