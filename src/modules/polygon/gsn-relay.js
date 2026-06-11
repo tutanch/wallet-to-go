@@ -180,7 +180,13 @@ export async function findRelay(requiredMaxAcceptanceBudget) {
     // 3. Prefer relays within the fee bounds, otherwise cheapest
     const acceptable = candidates.filter((relay) => relay.pctRelayFee.lte(MAX_PCT_RELAY_FEE)
         && relay.baseRelayFee.lte(MAX_BASE_RELAY_FEE));
-    const pool = acceptable.length ? acceptable : candidates;
+    // Fail closed: never fall back to a relay outside the fee bounds. The
+    // keyguard re-enforces these caps at signing time, so an over-bounds relay
+    // would only produce a transaction the keyguard rejects anyway.
+    if (!acceptable.length) {
+        throw new Error('No GSN relay within fee bounds (pctRelayFee ≤ 70%, baseRelayFee = 0)');
+    }
+    const pool = acceptable;
     pool.sort((a, b) => {
         if (!a.baseRelayFee.eq(b.baseRelayFee)) return a.baseRelayFee.lt(b.baseRelayFee) ? -1 : 1;
         if (!a.pctRelayFee.eq(b.pctRelayFee)) return a.pctRelayFee.lt(b.pctRelayFee) ? -1 : 1;

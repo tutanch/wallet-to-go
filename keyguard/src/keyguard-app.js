@@ -419,7 +419,7 @@ function renderTxConfirm({ amount, recipient, message, fee, biometric, showPassw
         </div>`;
 }
 
-function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees, totalCost, biometric, showPassword }) {
+function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees, totalCost, recipients = [], biometric, showPassword }) {
     const biometricSection = biometric ? `
         <div class="biometric-auth-section">
             <button id="btn-biometric" type="button" class="biometric-trigger">
@@ -450,6 +450,13 @@ function renderBatchTxConfirm({ recipientCount, totalAmount, feeEach, totalFees,
                     <div class="tx-confirm-row">
                         <span class="tx-label">Recipients</span>
                         <span class="tx-value">${escHtml(String(recipientCount))} addresses</span>
+                    </div>
+                    <div class="batch-recipient-list" style="max-height:180px;overflow-y:auto;margin:0 0 4px;border:1px solid rgba(127,127,127,.25);border-radius:8px;">
+                        ${(recipients || []).map((r) => `
+                        <div style="display:flex;justify-content:space-between;gap:10px;padding:7px 10px;font-size:12px;border-bottom:1px solid rgba(127,127,127,.12);">
+                            <span style="font-family:ui-monospace,monospace;word-break:break-all;">${escHtml(r.address)}</span>
+                            <span style="white-space:nowrap;font-variant-numeric:tabular-nums;">${escHtml(r.amount)}</span>
+                        </div>`).join('')}
                     </div>
                     <div class="tx-confirm-row">
                         <span class="tx-label">Total Amount</span>
@@ -1390,6 +1397,13 @@ async function flowSignBatchTransaction(args) {
     const totalCost = formatLuna(sumAmount + totalFee);
     const totalAmount = formatLuna(sumAmount);
     const totalFees = formatLuna(totalFee);
+    // SECURITY: the confirm UI must show WHERE the funds go, not just totals.
+    // Without this, a compromised wallet origin could redirect every recipient
+    // and the user — authenticating against count/total only — would not see it.
+    const recipients = args.transactions.map((tx) => ({
+        address: tx.recipientAddress,
+        amount: formatLuna(tx.value),
+    }));
 
     const info = await callWorker('getWebAuthnInfo');
     const passwordSet = await callWorker('hasPassword');
@@ -1399,6 +1413,7 @@ async function flowSignBatchTransaction(args) {
         setUI(renderBatchTxConfirm({
             recipientCount: count,
             totalAmount, feeEach, totalFees, totalCost,
+            recipients,
             biometric: true,
             showPassword: passwordSet,
         }));
@@ -1408,6 +1423,7 @@ async function flowSignBatchTransaction(args) {
         setUI(renderBatchTxConfirm({
             recipientCount: count,
             totalAmount, feeEach, totalFees, totalCost,
+            recipients,
         }));
 
         ui.querySelector('#btn-confirm').onclick = () => {

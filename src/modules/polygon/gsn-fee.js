@@ -28,6 +28,14 @@ const DATA_SIZE = {
 const GAS_PRICE_BUFFER_PCT = 110; // +10%
 const UNISWAP_BUFFER_PCT = 110; // +10%
 
+// Sanity ceiling on the relay fee, in token base units (6 decimals). Real
+// gasless transfer fees are cents; every input to the fee (gas price, gas
+// limit, Uniswap quote) comes from a public RPC, so a lying/MITM'd endpoint
+// could inflate the fee until it drains the balance. We refuse rather than let
+// the user unknowingly sign a huge fee. 5 tokens is ~25-250x a normal fee, so
+// it never trips on a legitimate send even during a gas spike.
+const MAX_FEE_TOKEN_UNITS = 5_000_000;
+
 const TOKENS = {
     usdc: { config: POLYGON.usdc, transferName: 'usdcTransfer', method: 'transferWithPermit' },
     usdt: { config: POLYGON.usdt, transferName: 'usdtTransfer', method: 'transferWithApproval' },
@@ -127,8 +135,18 @@ export async function calculateFee(token, forceRelay) {
     const chainTokenFee = gasPrice.mul(gasLimit).mul(relay.pctRelayFee.add(100)).div(100)
         .add(relay.baseRelayFee);
 
+    // A zero quote (thin/empty pool, or a lying RPC) would divide-by-zero below.
+    if (usdPrice.lte(0)) {
+        throw new Error('Could not determine the on-chain token price; try again.');
+    }
+
     // Convert POL wei → token base units via the on-chain rate, + buffer
     const fee = chainTokenFee.div(usdPrice).mul(UNISWAP_BUFFER_PCT).div(100);
+
+    // Refuse an absurd fee rather than letting a lying RPC drain the balance.
+    if (fee.gt(MAX_FEE_TOKEN_UNITS)) {
+        throw new Error('Relay fee is abnormally high — refusing to proceed. Check your network connection / RPC.');
+    }
 
     return {
         fee,

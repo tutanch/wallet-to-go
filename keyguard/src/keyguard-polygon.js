@@ -42,6 +42,12 @@ const TOKENS = {
 // Fee-gouging cap inside the trust boundary (same bounds as relay selection)
 const MAX_PCT_RELAY_FEE = 70;
 
+// Backstop ceiling on the absolute fee, in token base units (6 decimals).
+// Real gasless fees are cents; this bounds catastrophic loss even if the
+// wallet's own fee cap is bypassed (e.g. a compromised wallet origin).
+// 50 tokens is far above any legitimate fee, so it never trips in normal use.
+const MAX_FEE_UNITS = '50000000'; // 50 USDC/USDT
+
 const USDC_TRANSFER_ABI = [
     'function transferWithPermit(address token, uint256 amount, address target, uint256 fee, uint256 value, bytes32 sigR, bytes32 sigS, uint8 sigV)',
 ];
@@ -202,6 +208,7 @@ export function validateAndParse({ token, relayRequest }) {
     if (!ethers.utils.isAddress(target)) throw new Error('Invalid Polygon request: bad recipient');
     if (amount.lte(0)) throw new Error('Invalid Polygon request: amount must be positive');
     if (fee.lt(0)) throw new Error('Invalid Polygon request: negative fee');
+    if (fee.gt(MAX_FEE_UNITS)) throw new Error('Invalid Polygon request: fee too high');
 
     // The permit/approval must cover EXACTLY amount + fee — nothing more
     if (!approvalValue.eq(amount.add(fee))) {
