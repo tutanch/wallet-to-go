@@ -1623,8 +1623,9 @@ body {
 
         --color-overlay: rgba(0, 0, 0, 0.8);
 
-        --color-qr-fill: #e0e0ec;
-        --color-qr-bg: #1a1b2e;
+        /* QR stays dark-on-light in dark mode — scanners reject inverted codes */
+        --color-qr-fill: #1F2348;
+        --color-qr-bg: #ffffff;
     }
 }
 
@@ -1687,8 +1688,9 @@ body {
 
     --color-overlay: rgba(0, 0, 0, 0.8);
 
-    --color-qr-fill: #e0e0ec;
-    --color-qr-bg: #1a1b2e;
+    /* QR stays dark-on-light in dark mode — scanners reject inverted codes */
+    --color-qr-fill: #1F2348;
+    --color-qr-bg: #ffffff;
 }
 
 /* ---- Reduced motion ---- */
