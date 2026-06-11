@@ -32,7 +32,7 @@ export async function batchSendView() {
     el.innerHTML = `
         <div class="nq-card">
             <div class="nq-card-header">
-                <h1 class="nq-h1">Batch Send NIM</h1>
+                <h1 class="nq-h1">Batch Send</h1>
                 <p class="nq-text">Send NIM to multiple recipients at once.</p>
             </div>
             <div class="nq-card-body">
@@ -77,7 +77,7 @@ export async function batchSendView() {
         reader.readAsText(file);
     });
 
-    el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
+    el.querySelector('#btn-back').addEventListener('click', () => navigate('#asset-nim'));
 
     el.querySelector('#btn-validate').addEventListener('click', async () => {
         const errorEl = el.querySelector('#error');
@@ -399,8 +399,8 @@ export async function batchSendView() {
             footer.innerHTML = '';
             const btnDone = document.createElement('button');
             btnDone.className = 'nq-button-s';
-            btnDone.textContent = 'Back to Dashboard';
-            btnDone.addEventListener('click', () => navigate('#dashboard'));
+            btnDone.textContent = 'Done';
+            btnDone.addEventListener('click', () => navigate('#asset-nim'));
             footer.appendChild(btnDone);
 
             const resultEl = el.querySelector('#batch-result');
@@ -446,7 +446,7 @@ export async function batchSendView() {
         return s.substring(0, 9) + '...' + s.substring(s.length - 9);
     }
 
-    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#asset-nim'));
     return {
         element: el,
         cleanup: () => { stopRequested = true; cleanupSwipe(); },

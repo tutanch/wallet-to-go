@@ -49,6 +49,34 @@ export async function assetView(asset) {
 
     const displayAddress = asset === 'nim' ? nimAddress : polygonAddress;
 
+    // NIM-only tools (batch send, cashlinks) — list rows in the asset's home
+    const nimTools = asset !== 'nim' ? '' : `
+                <div class="section-header">
+                    <h2 class="nq-label">Tools</h2>
+                </div>
+                <div class="asset-list">
+                    <button type="button" class="asset-row" id="btn-batch-send">
+                        <span class="tx-direction" style="background:${meta.color}" aria-hidden="true">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11l5-5 5 5M7 17l5-5 5 5"/></svg>
+                        </span>
+                        <span class="asset-info">
+                            <span class="asset-name">Batch Send</span>
+                            <span class="asset-sub">Send to many recipients at once</span>
+                        </span>
+                        <span class="asset-chevron" aria-hidden="true">&rsaquo;</span>
+                    </button>
+                    <button type="button" class="asset-row" id="btn-cashlinks">
+                        <span class="tx-direction" style="background:${meta.color}" aria-hidden="true">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </span>
+                        <span class="asset-info">
+                            <span class="asset-name">Cashlinks</span>
+                            <span class="asset-sub">Shareable links pre-loaded with NIM</span>
+                        </span>
+                        <span class="asset-chevron" aria-hidden="true">&rsaquo;</span>
+                    </button>
+                </div>`;
+
     const el = document.createElement('div');
     el.className = 'view-container';
     el.innerHTML = `
@@ -71,7 +99,7 @@ export async function assetView(asset) {
                 <div class="action-buttons">
                     <button class="nq-button light-blue" id="btn-send">Send</button>
                     <button class="nq-button green" id="btn-receive">Receive</button>
-                </div>
+                </div>${nimTools}
                 <div class="section-header">
                     <h2 class="nq-label">Activity</h2>
                 </div>
@@ -133,6 +161,11 @@ export async function assetView(asset) {
         sessionStorage.setItem('preselect-receive', asset === 'nim' ? 'nim' : 'polygon');
         navigate('#receive');
     });
+
+    if (asset === 'nim') {
+        el.querySelector('#btn-batch-send').addEventListener('click', () => navigate('#batch-send'));
+        el.querySelector('#btn-cashlinks').addEventListener('click', () => navigate('#cashlinks'));
+    }
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 

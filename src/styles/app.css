@@ -847,13 +847,6 @@ details.advanced > .advanced-body {
     min-height: 48px;
 }
 
-.action-buttons-secondary {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-4);
-}
-
 /* ---- Asset list (dashboard) ---- */
 .asset-list {
     display: flex;

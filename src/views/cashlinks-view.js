@@ -74,6 +74,10 @@ export async function cashlinksView() {
         // Header with tabs
         const header = document.createElement('div');
         header.className = 'nq-card-header';
+        const title = document.createElement('h1');
+        title.className = 'nq-h1';
+        title.textContent = 'Cashlinks';
+        header.appendChild(title);
         renderTabs(header);
         const subtitle = document.createElement('p');
         subtitle.className = 'nq-text';
@@ -123,7 +127,7 @@ export async function cashlinksView() {
         const btnBack = document.createElement('button');
         btnBack.className = 'nq-button-s';
         btnBack.textContent = 'Back';
-        btnBack.addEventListener('click', () => navigate('#dashboard'));
+        btnBack.addEventListener('click', () => navigate('#asset-nim'));
         const btnGenerate = document.createElement('button');
         btnGenerate.className = 'nq-button light-blue';
         btnGenerate.textContent = 'Generate';
@@ -477,7 +481,7 @@ export async function cashlinksView() {
                     <div class="cashlink-list" id="cashlink-list"></div>
                 </div>
                 <div class="nq-card-footer">
-                    <button class="nq-button-s" id="btn-done">Back to Dashboard</button>
+                    <button class="nq-button-s" id="btn-done">Done</button>
                 </div>
             </div>
         `;
@@ -503,7 +507,7 @@ export async function cashlinksView() {
             exportCsv(cashlinks.map(cl => cl.url), cashlinks.map(cl => cl.address), formatNim(amountLuna), `cashlinks-${Date.now()}.csv`);
         });
 
-        el.querySelector('#btn-done').addEventListener('click', () => navigate('#dashboard'));
+        el.querySelector('#btn-done').addEventListener('click', () => navigate('#asset-nim'));
     }
 
     // ── Saved Run Results ───────────────────────────────────────
@@ -565,6 +569,10 @@ export async function cashlinksView() {
         // Header with tabs
         const header = document.createElement('div');
         header.className = 'nq-card-header';
+        const title = document.createElement('h1');
+        title.className = 'nq-h1';
+        title.textContent = 'Cashlinks';
+        header.appendChild(title);
         renderTabs(header);
         const subtitle = document.createElement('p');
         subtitle.className = 'nq-text';
@@ -626,7 +634,7 @@ export async function cashlinksView() {
         const btnBack = document.createElement('button');
         btnBack.className = 'nq-button-s';
         btnBack.textContent = 'Back';
-        btnBack.addEventListener('click', () => navigate('#dashboard'));
+        btnBack.addEventListener('click', () => navigate('#asset-nim'));
         const btnParse = document.createElement('button');
         btnParse.className = 'nq-button light-blue';
         btnParse.textContent = 'Check Balances';
@@ -993,8 +1001,8 @@ export async function cashlinksView() {
         footer.className = 'nq-card-footer';
         const btnDone = document.createElement('button');
         btnDone.className = 'nq-button-s';
-        btnDone.textContent = 'Back to Dashboard';
-        btnDone.addEventListener('click', () => navigate('#dashboard'));
+        btnDone.textContent = 'Done';
+        btnDone.addEventListener('click', () => navigate('#asset-nim'));
         const btnAgain = document.createElement('button');
         btnAgain.className = 'nq-button-s';
         btnAgain.textContent = 'Claim More';
@@ -1055,7 +1063,7 @@ export async function cashlinksView() {
 
     showCreateMode();
 
-    const cleanupSwipe = enableSwipeBack(el, () => navigate('#dashboard'));
+    const cleanupSwipe = enableSwipeBack(el, () => navigate('#asset-nim'));
     return {
         element: el,
         cleanup: () => { stopRequested = true; cleanupSwipe(); },
