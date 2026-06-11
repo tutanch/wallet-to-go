@@ -17,7 +17,7 @@ export function lockView() {
                 <p style="margin: 16px 0 0;">
                     <button class="nq-button-s" id="btn-password" style="display: none;">Use Password</button>
                 </p>
-                <p class="nq-text error-text" id="lock-error" style="display: none; margin-top: 12px;"></p>
+                <p class="nq-text error-text" id="lock-error" role="alert" style="display: none; margin-top: 12px;"></p>
                 <p style="margin-top: 24px;">
                     <a href="#welcome" class="nq-link" id="link-different" style="font-size: 13px;">Use a different wallet</a>
                 </p>
@@ -40,6 +40,7 @@ export function lockView() {
     el.querySelector('#btn-passkey').addEventListener('click', async () => {
         const btn = el.querySelector('#btn-passkey');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Authenticating...';
         errorEl.style.display = 'none';
 
@@ -49,6 +50,7 @@ export function lockView() {
         } catch (e) {
             if (!active) return;
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Login with Passkey';
             if (e.message !== 'User cancelled') {
                 errorEl.textContent = 'Passkey authentication failed. Please try again.';
@@ -61,6 +63,7 @@ export function lockView() {
     el.querySelector('#btn-password').addEventListener('click', async () => {
         const btn = el.querySelector('#btn-password');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
@@ -74,6 +77,7 @@ export function lockView() {
                 errorEl.style.display = '';
             }
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Use Password';
         }
     });

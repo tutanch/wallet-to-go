@@ -85,22 +85,22 @@ export async function cashlinksView() {
         body.className = 'nq-card-body';
         body.innerHTML = `
             <div class="form-group">
-                <label class="nq-label">Number of cashlinks (1\u2013100)</label>
+                <label class="nq-label" for="cl-count">Number of cashlinks (1\u2013100)</label>
                 <input type="number" class="nq-input" id="cl-count" placeholder="1" value="1" min="1" max="100" step="1">
             </div>
             <div class="form-group">
-                <label class="nq-label">Amount per cashlink (NIM)</label>
+                <label class="nq-label" for="cl-amount">Amount per cashlink (NIM)</label>
                 <input type="number" class="nq-input" id="cl-amount" placeholder="1.00" step="0.00001" min="0">
             </div>
             <div class="form-group">
-                <label class="nq-label">Message (optional)</label>
+                <label class="nq-label" for="cl-message">Message (optional)</label>
                 <input type="text" class="nq-input" id="cl-message" placeholder="" maxlength="255">
             </div>
             <div class="form-group">
-                <label class="nq-label">Fee per funding TX (luna)</label>
+                <label class="nq-label" for="cl-fee">Fee per funding TX (luna)</label>
                 <input type="number" class="nq-input" id="cl-fee" placeholder="0" value="0" min="0" step="1">
             </div>
-            <p class="nq-text error-text" id="cl-error" style="display:none;"></p>
+            <p class="nq-text error-text" id="cl-error" role="alert" style="display:none;"></p>
         `;
 
         // Saved runs section
@@ -156,6 +156,7 @@ export async function cashlinksView() {
             }
 
             btnGenerate.disabled = true;
+            btnGenerate.setAttribute('aria-busy', 'true');
             btnGenerate.textContent = 'Generating keys...';
 
             try {
@@ -167,6 +168,7 @@ export async function cashlinksView() {
                 errorEl.style.display = '';
                 btnGenerate.textContent = 'Generate';
                 btnGenerate.disabled = false;
+                btnGenerate.removeAttribute('aria-busy');
             }
         });
         footer.append(btnBack, btnGenerate);
@@ -217,6 +219,7 @@ export async function cashlinksView() {
             viewBtn.textContent = 'View';
             viewBtn.addEventListener('click', async () => {
                 viewBtn.disabled = true;
+                viewBtn.setAttribute('aria-busy', 'true');
                 viewBtn.textContent = 'Loading...';
                 try {
                     const data = await loadCashlinkRun(run.id);
@@ -226,6 +229,7 @@ export async function cashlinksView() {
                         showToast('Could not load run.', 'error');
                     }
                     viewBtn.disabled = false;
+                    viewBtn.removeAttribute('aria-busy');
                     viewBtn.textContent = 'View';
                 }
             });
@@ -274,14 +278,14 @@ export async function cashlinksView() {
                             <div class="lbl">Balance</div>
                         </div>
                     </div>
-                    <p class="nq-text error-text" id="balance-warning" style="display:none;"></p>
+                    <p class="nq-text error-text" id="balance-warning" role="alert" style="display:none;"></p>
                     <div class="batch-table-container">
                         <table class="batch-table">
                             <thead><tr><th>#</th><th>Address</th><th>Amount</th><th>Status</th></tr></thead>
                             <tbody id="batch-tbody"></tbody>
                         </table>
                     </div>
-                    <p class="nq-text error-text" id="cl-error" style="display:none;"></p>
+                    <p class="nq-text error-text" id="cl-error" role="alert" style="display:none;"></p>
                 </div>
                 <div class="nq-card-footer">
                     <button class="nq-button-s" id="btn-edit">Edit</button>
@@ -340,6 +344,7 @@ export async function cashlinksView() {
         const errorEl = el.querySelector('#cl-error');
         errorEl.style.display = 'none';
         btnFund.disabled = true;
+        btnFund.setAttribute('aria-busy', 'true');
         btnFund.textContent = 'Opening keyguard...';
 
         try {
@@ -435,6 +440,7 @@ export async function cashlinksView() {
 
         } catch (e) {
             btnFund.disabled = false;
+            btnFund.removeAttribute('aria-busy');
             btnFund.textContent = 'Fund Cashlinks';
 
             if (e.message === 'User cancelled') return;
@@ -570,7 +576,7 @@ export async function cashlinksView() {
         body.className = 'nq-card-body';
         body.innerHTML = `
             <div class="form-group">
-                <label class="nq-label">Cashlink URLs (one per line)</label>
+                <label class="nq-label" for="claim-urls">Cashlink URLs (one per line)</label>
                 <textarea class="nq-input" id="claim-urls" rows="6" placeholder="https://hub.nimiq.com/cashlink/#..."></textarea>
             </div>
             <div class="form-group file-upload-wrapper">
@@ -580,10 +586,10 @@ export async function cashlinksView() {
                 </label>
             </div>
             <div class="form-group">
-                <label class="nq-label">Fee per claim TX (luna)</label>
+                <label class="nq-label" for="claim-fee">Fee per claim TX (luna)</label>
                 <input type="number" class="nq-input" id="claim-fee" placeholder="0" value="0" min="0" step="1">
             </div>
-            <p class="nq-text error-text" id="claim-error" style="display:none;"></p>
+            <p class="nq-text error-text" id="claim-error" role="alert" style="display:none;"></p>
         `;
 
         // CSV upload handler
@@ -666,6 +672,7 @@ export async function cashlinksView() {
         }
 
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Checking...';
 
         try {
@@ -691,6 +698,7 @@ export async function cashlinksView() {
         } catch (e) {
             console.error('Cashlink check failed:', e);
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Check Balances';
 
             if (e.message === 'User cancelled') return;
@@ -836,6 +844,7 @@ export async function cashlinksView() {
     async function startClaiming(claimable, feeValue, totalCount) {
         const btnClaim = el.querySelector('.nq-button.light-blue');
         btnClaim.disabled = true;
+        btnClaim.setAttribute('aria-busy', 'true');
         btnClaim.textContent = 'Preparing...';
 
         try {
@@ -926,6 +935,7 @@ export async function cashlinksView() {
 
         } catch (e) {
             btnClaim.disabled = false;
+            btnClaim.removeAttribute('aria-busy');
             btnClaim.textContent = 'Claim All';
 
             if (e.message === 'User cancelled') return;
@@ -933,6 +943,7 @@ export async function cashlinksView() {
             console.error('Cashlink claiming failed:', e);
             const errorEl = document.createElement('p');
             errorEl.className = 'nq-text error-text';
+            errorEl.setAttribute('role', 'alert');
             const msg = e.message || '';
             if (msg.includes('Network ID mismatch')) {
                 errorEl.textContent = 'Network mismatch. Please check your network setting.';

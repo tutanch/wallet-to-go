@@ -1,28 +1,108 @@
-/* ===================================
-   Nimiq Keyguard — Standalone Styles
-   Does NOT depend on @nimiq/style.
-   =================================== */
+/* ============================================================
+   Nimiq Keyguard — "Instrument Panel" design language
+   Standalone (separate origin). Token block mirrors the wallet.
+   ============================================================ */
 
-/* Nimiq color palette */
+/* == DESIGN TOKENS — KEEP IN SYNC: src/styles/app.css <-> keyguard/src/styles/keyguard.css ==
+   The wallet and keyguard deploy to separate origins and cannot share a file
+   at runtime. scripts/generate-sw.js warns on every deploy if the two blocks
+   between these sentinels differ. */
 :root {
-    --nq-blue: #1F2348;
-    --nq-light-blue: #0582CA;
-    --nq-green: #21bca5;
-    --nq-red: #d94432;
-    --text-primary: #1F2348;
-    --text-secondary: rgba(31, 35, 72, 0.7);
-    --text-hint: rgba(31, 35, 72, 0.55);
-    --border-color: rgba(31, 35, 72, 0.15);
-    --bg-subtle: rgba(31, 35, 72, 0.05);
-    --bg-card: white;
-    --bg-input-focus: white;
-    --overlay-bg: rgba(31, 35, 72, 0.85);
-    --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.3);
-    --btn-secondary-hover: rgba(31, 35, 72, 0.1);
-    --account-row-hover: rgba(5, 130, 202, 0.06);
+    /* Base colors — the ONLY values dark mode redefines */
+    --ink:         #1F2348;   /* text, primary fills */
+    --surface:     #FFFFFF;   /* card / control background */
+    --backdrop:    #1F2348;   /* page behind the card — solid */
+    --accent:      #0582CA;   /* focus rings, selected borders (UI contrast 3:1) */
+    --accent-ink:  #0471B0;   /* links, accent text/fills (text contrast 4.5:1) */
+    --positive:    #0E8570;   /* success / incoming ONLY */
+    --negative:    #C73A29;   /* error / outgoing / danger ONLY */
+    --warning:     #F5A623;   /* warning borders/icons only */
+    --warning-ink: #9A6700;   /* warning text */
+    --overlay:     rgba(15, 17, 36, 0.85);
+    --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.10);
+
+    /* Derived tints — recompute automatically from --ink in dark mode */
+    --ink-secondary: color-mix(in srgb, var(--ink) 78%, transparent);
+    --ink-muted:     color-mix(in srgb, var(--ink) 65%, transparent);
+    --ink-disabled:  color-mix(in srgb, var(--ink) 45%, transparent);
+    --edge:          color-mix(in srgb, var(--ink) 14%, transparent);
+    --edge-strong:   color-mix(in srgb, var(--ink) 50%, transparent);
+    --fill-subtle:   color-mix(in srgb, var(--ink) 4%, transparent);
+    --fill-hover:    color-mix(in srgb, var(--ink) 7%, transparent);
+    --fill-active:   color-mix(in srgb, var(--ink) 11%, transparent);
+    --accent-fill:   color-mix(in srgb, var(--accent) 10%, transparent);
+    --positive-fill: color-mix(in srgb, var(--positive) 10%, transparent);
+    --negative-fill: color-mix(in srgb, var(--negative) 8%, transparent);
+    --warning-fill:  color-mix(in srgb, var(--warning) 12%, transparent);
+
+    /* QR — read by JS (receive-view). Constant in both modes: scanners
+       need dark-on-light. DO NOT rename or redefine in dark blocks. */
+    --color-qr-fill: #1F2348;
+    --color-qr-bg:   #ffffff;
+
+    /* Type */
+    --font-ui:   system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+    --text-xs: 11px;
+    --text-s:  13px;
+    --text-m:  15px;
+    --text-l:  18px;
+    --text-xl: 21px;
+    --text-display: 36px;
+
+    /* Space / radius / motion */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --radius-s: 4px;
+    --radius-m: 6px;
+    --t-fast: 80ms;
+    --t-base: 120ms;
+
+    /* Safe areas */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
 }
 
-/* Reset */
+/* Dark mode — automatic (OS preference, unless manually set to light) */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --ink: #E0E0EC;
+        --surface: #1A1B2E;
+        --backdrop: #0F1126;
+        --accent: #5BB8F0;
+        --accent-ink: #5BB8F0;
+        --positive: #2DD4B7;
+        --negative: #F06050;
+        --warning: #F5A623;
+        --warning-ink: #F5A623;
+        --overlay: rgba(0, 0, 0, 0.8);
+        --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
+    }
+}
+
+/* Dark mode — manual override (synced from wallet via set-theme) */
+:root[data-theme="dark"] {
+    --ink: #E0E0EC;
+    --surface: #1A1B2E;
+    --backdrop: #0F1126;
+    --accent: #5BB8F0;
+    --accent-ink: #5BB8F0;
+    --positive: #2DD4B7;
+    --negative: #F06050;
+    --warning: #F5A623;
+    --warning-ink: #F5A623;
+    --overlay: rgba(0, 0, 0, 0.8);
+    --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+/* == END DESIGN TOKENS == */
+
+/* ---- Reset ---- */
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -35,10 +115,17 @@ html, body {
 }
 
 body {
-    font-family: 'Muli', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-ui);
     background: transparent;
-    color: var(--text-primary);
+    color: var(--ink);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Focus ---- */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 /* ---- Keyguard container: full-screen overlay ---- */
@@ -48,12 +135,10 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--overlay-bg);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    padding: 16px;
+    background: var(--overlay);
+    padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
     z-index: 1;
-    animation: fadeIn 0.15s ease-out;
+    animation: fadeIn var(--t-base) ease-out;
 }
 
 @keyframes fadeIn {
@@ -61,48 +146,50 @@ body {
     to { opacity: 1; }
 }
 
-/* ---- Card ---- */
+/* ---- Card (true overlay — the one sanctioned shadow) ---- */
 .keyguard-card {
-    background: var(--bg-card);
-    border-radius: 12px;
+    background: var(--surface);
+    border-radius: var(--radius-m);
     width: 100%;
     max-width: 420px;
     max-height: 90vh;
+    max-height: 90dvh;
     display: flex;
     flex-direction: column;
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-overlay);
 }
 
 /* ---- Header ---- */
 .keyguard-header {
-    padding: 28px 24px 12px;
+    padding: var(--space-5) var(--space-5) var(--space-3);
     text-align: center;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--edge);
 }
 
 .keyguard-header h1 {
-    font-size: 22px;
+    font-size: var(--text-l);
     font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1.2;
+    color: var(--ink);
+    line-height: 1.25;
     margin-bottom: 6px;
 }
 
 .keyguard-header p {
     font-size: 14px;
-    line-height: 1.4;
-    color: var(--text-secondary);
+    line-height: 1.45;
+    color: var(--ink-secondary);
 }
 
 .countdown-text {
     font-size: 12px;
-    color: var(--text-hint);
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
     margin-top: 6px;
 }
 
 /* ---- Body ---- */
 .keyguard-body {
-    padding: 20px 24px;
+    padding: var(--space-4) var(--space-5);
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -110,51 +197,65 @@ body {
 
 /* ---- Footer ---- */
 .keyguard-footer {
-    padding: 16px 24px;
+    padding: var(--space-4) var(--space-5);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
-    border-top: 1px solid var(--border-color);
+    gap: var(--space-3);
+    border-top: 1px solid var(--edge);
 }
 
 /* ---- Form groups ---- */
 .form-group {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
 }
 
 .form-group:last-child {
     margin-bottom: 0;
 }
 
+.kg-label {
+    display: block;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    margin-bottom: 6px;
+}
+
 /* ---- Inputs ---- */
 .nq-input {
     width: 100%;
-    padding: 12px 16px;
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--bg-subtle);
-    color: var(--text-primary);
-    font-size: 16px;
+    padding: 11px 12px;
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 16px; /* < 16px triggers iOS focus zoom */
     font-family: inherit;
-    transition: border-color 0.2s, background 0.2s;
+    transition: border-color var(--t-base);
     -webkit-appearance: none;
     appearance: none;
 }
 
 .nq-input::placeholder {
-    color: var(--text-hint);
+    color: var(--ink-muted);
 }
 
 .nq-input:focus {
     outline: none;
-    border-color: var(--nq-light-blue);
-    background: var(--bg-input-focus);
+    border-color: var(--accent);
+}
+
+.nq-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 textarea.nq-input {
     resize: vertical;
-    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 14px;
     line-height: 1.6;
     min-height: 120px;
@@ -165,88 +266,116 @@ textarea.nq-input {
     word-spacing: 0.1em;
 }
 
-/* ---- Error text ---- */
+/* ---- Error text (shown via inline style.display — keep visible-by-default) ---- */
 .error-text {
-    color: var(--nq-red);
-    font-size: 13px;
-    margin-top: 8px;
+    color: var(--negative);
+    font-size: var(--text-s);
+    margin-top: var(--space-2);
     display: block;
 }
 
 /* ---- Buttons ---- */
 .btn-primary {
-    padding: 12px 24px;
-    background: var(--nq-light-blue);
-    color: #fff;
+    padding: 11px 24px;
+    background: var(--accent-ink);
+    color: var(--surface);
     border: none;
-    border-radius: 500px;
-    font-size: 15px;
-    font-weight: 700;
+    border-radius: var(--radius-m);
+    font-size: var(--text-m);
+    font-weight: 600;
     font-family: inherit;
-    letter-spacing: 0.05em;
     cursor: pointer;
-    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
-    box-shadow: 0 4px 12px rgba(5, 130, 202, 0.3);
+    transition: background var(--t-fast), color var(--t-fast);
     min-height: 44px;
     white-space: nowrap;
 }
 
 .btn-primary:hover:not(:disabled) {
-    opacity: 0.9;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 16px rgba(5, 130, 202, 0.35);
+    background: color-mix(in srgb, var(--accent-ink) 88%, var(--surface));
 }
 
 .btn-primary:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(5, 130, 202, 0.25);
+    background: color-mix(in srgb, var(--accent-ink) 78%, var(--surface));
 }
 
 .btn-primary:disabled {
-    opacity: 0.5;
+    background: var(--fill-hover);
+    color: var(--ink-disabled);
     cursor: not-allowed;
-    transform: none;
 }
 
 .btn-primary.danger {
-    background: var(--nq-red);
-    box-shadow: 0 4px 12px rgba(217, 68, 50, 0.3);
+    background: var(--negative);
 }
 
 .btn-primary.danger:hover:not(:disabled) {
-    box-shadow: 0 6px 16px rgba(217, 68, 50, 0.35);
+    background: color-mix(in srgb, var(--negative) 88%, var(--surface));
+}
+
+/* Verification complete — solid positive fill signals ready (was a glow animation) */
+.btn-verify-ready {
+    background: var(--positive);
+}
+
+.btn-verify-ready:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--positive) 88%, var(--surface));
 }
 
 .btn-secondary {
-    padding: 8px 16px;
-    background: var(--bg-subtle);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 500px;
-    font-size: 14px;
+    padding: 7px 14px;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--edge-strong);
+    border-radius: var(--radius-s);
+    font-size: var(--text-s);
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
-    transition: background 0.15s;
-    min-height: 36px;
+    transition: background var(--t-fast);
+    min-height: 34px;
     white-space: nowrap;
 }
 
 .btn-secondary:hover:not(:disabled) {
-    background: var(--btn-secondary-hover);
+    background: var(--fill-hover);
 }
 
 .btn-secondary:disabled {
-    opacity: 0.5;
+    color: var(--ink-disabled);
+    border-color: var(--edge);
     cursor: not-allowed;
+}
+
+/* Busy state — set as aria-busy alongside disabled during async work */
+button[aria-busy="true"]::after {
+    content: '';
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin-left: var(--space-2);
+    vertical-align: -0.1em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* The fingerprint trigger already signals busy via its dimmed icon and hint
+   text — keep the aria-busy semantics without a second visual ring. */
+.biometric-trigger[aria-busy="true"]::after {
+    display: none;
 }
 
 /* ---- Mnemonic grid ---- */
 .mnemonic-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin: 12px 0;
+    gap: var(--space-2);
+    margin: var(--space-3) 0;
 }
 
 @media (min-width: 400px) {
@@ -260,43 +389,46 @@ textarea.nq-input {
     align-items: center;
     gap: 6px;
     padding: 8px 10px;
-    background: var(--bg-subtle);
-    border-radius: 8px;
-    font-size: 13px;
-    min-height: 38px;
+    background: transparent;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-s);
+    font-size: var(--text-s);
+    min-height: 40px;
 }
 
 .word-number {
-    color: var(--text-hint);
-    font-size: 11px;
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-xs);
     min-width: 18px;
-    font-weight: 600;
     flex-shrink: 0;
 }
 
 .word-text {
-    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--ink);
     word-break: break-all;
 }
 
 /* ---- TX confirmation ---- */
 .tx-amount-large {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-top: 4px;
-    font-family: 'Fira Mono', 'Fira Code', monospace;
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-top: var(--space-1);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
 }
 
 .tx-confirm-row {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 12px;
+    gap: var(--space-3);
     padding: 10px 0;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--edge);
     font-size: 14px;
 }
 
@@ -305,28 +437,29 @@ textarea.nq-input {
 }
 
 .tx-label {
-    color: var(--text-hint);
+    color: var(--ink-muted);
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 11px;
+    font-size: var(--text-xs);
     letter-spacing: 0.08em;
     flex-shrink: 0;
     padding-top: 2px;
 }
 
 .tx-value {
-    font-family: 'Fira Mono', 'Fira Code', monospace;
-    font-size: 13px;
-    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-s);
+    color: var(--ink);
     text-align: right;
     word-break: break-all;
 }
 
-/* ---- WebAuthn / Biometric unlock ---- */
+/* ---- WebAuthn / Biometric ---- */
 .webauthn-icon {
     text-align: center;
-    padding: 16px 0;
-    color: var(--nq-light-blue);
+    padding: var(--space-4) 0;
+    color: var(--accent-ink);
 }
 
 .webauthn-icon svg {
@@ -334,22 +467,21 @@ textarea.nq-input {
     height: 64px;
 }
 
-/* ---- Biometric fingerprint auth ---- */
 .biometric-auth-body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-top: 24px;
-    padding-bottom: 8px;
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-2);
 }
 
 .biometric-auth-section {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-color);
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--edge);
 }
 
 .biometric-trigger {
@@ -360,18 +492,18 @@ textarea.nq-input {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 20px;
-    color: #722F37;
-    transition: transform 0.15s;
-    border-radius: 50%;
+    padding: var(--space-4);
+    color: var(--accent-ink);
+    border-radius: var(--radius-m);
+    transition: background var(--t-fast);
 }
 
 .biometric-trigger:hover:not(:disabled) {
-    transform: scale(1.08);
+    background: var(--fill-hover);
 }
 
 .biometric-trigger:active:not(:disabled) {
-    transform: scale(0.95);
+    background: var(--fill-active);
 }
 
 .biometric-trigger svg {
@@ -388,43 +520,44 @@ textarea.nq-input {
 }
 
 .biometric-hint {
-    font-size: 13px;
+    font-size: var(--text-s);
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--ink-secondary);
     font-family: inherit;
 }
 
 @keyframes fingerprint-pulse {
-    0%, 100% { opacity: 1; color: #722F37; }
-    50% { opacity: 0.5; color: #8B3A42; }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
 }
 
 /* ---- Account picker (passkey restore) ---- */
 .account-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
 }
 
 .account-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     width: 100%;
-    padding: 14px 16px;
-    background: var(--bg-subtle);
-    border: 2px solid var(--border-color);
-    border-radius: 10px;
+    padding: 13px 14px;
+    background: transparent;
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-s);
+    color: inherit;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color var(--t-fast), background var(--t-fast);
     text-align: left;
     font-family: inherit;
     font-size: 14px;
 }
 
 .account-row:hover:not(:disabled) {
-    border-color: var(--nq-light-blue);
-    background: var(--account-row-hover);
+    border-color: var(--accent);
+    background: var(--accent-fill);
 }
 
 .account-row:disabled {
@@ -433,9 +566,11 @@ textarea.nq-input {
 }
 
 .account-index {
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--nq-light-blue);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: var(--text-s);
+    color: var(--accent-ink);
     flex-shrink: 0;
     min-width: 24px;
 }
@@ -449,76 +584,41 @@ textarea.nq-input {
 }
 
 .account-address {
-    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--text-primary);
+    color: var(--ink);
     word-break: break-all;
     line-height: 1.4;
 }
 
 .account-balance {
-    font-family: 'Fira Mono', 'Fira Code', monospace;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 12px;
     font-weight: 600;
-    color: var(--nq-green);
+    color: var(--positive);
 }
 
-/* ---- Dark mode (auto-detect) ---- */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        --nq-blue: #e0e0ec;
-        --text-primary: #e0e0ec;
-        --text-secondary: rgba(224, 224, 236, 0.7);
-        --text-hint: rgba(224, 224, 236, 0.55);
-        --border-color: rgba(224, 224, 236, 0.15);
-        --bg-subtle: rgba(224, 224, 236, 0.08);
-        --bg-card: #1a1b2e;
-        --bg-input-focus: #22233a;
-        --overlay-bg: rgba(0, 0, 0, 0.8);
-        --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.6);
-        --btn-secondary-hover: rgba(224, 224, 236, 0.12);
-        --account-row-hover: rgba(5, 130, 202, 0.12);
-    }
-}
-
-/* ---- Dark mode (manual override) ---- */
-:root[data-theme="dark"] {
-    --nq-blue: #e0e0ec;
-    --text-primary: #e0e0ec;
-    --text-secondary: rgba(224, 224, 236, 0.7);
-    --text-hint: rgba(224, 224, 236, 0.55);
-    --border-color: rgba(224, 224, 236, 0.15);
-    --bg-subtle: rgba(224, 224, 236, 0.08);
-    --bg-card: #1a1b2e;
-    --bg-input-focus: #22233a;
-    --overlay-bg: rgba(0, 0, 0, 0.8);
-    --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.6);
-    --btn-secondary-hover: rgba(224, 224, 236, 0.12);
-    --account-row-hover: rgba(5, 130, 202, 0.12);
-}
-
-/* ---- Warning banner (mnemonic backup screen) ---- */
+/* ---- Warning banners (static — no pulse) ---- */
 .warning-banner {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
-    background: rgba(245, 166, 35, 0.12);
-    border: 1px solid rgba(245, 166, 35, 0.35);
-    border-radius: 8px;
-    font-size: 13px;
+    padding: var(--space-3) 14px;
+    background: var(--warning-fill);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-s);
+    font-size: var(--text-s);
     font-weight: 600;
-    color: #b87a00;
+    color: var(--warning-ink);
     line-height: 1.4;
-    margin-bottom: 12px;
-    animation: bannerPulse 2s ease-in-out 3;
+    margin-bottom: var(--space-3);
 }
 
 .warning-banner-danger {
-    background: rgba(217, 68, 50, 0.1);
-    border-color: rgba(217, 68, 50, 0.35);
-    color: var(--nq-red);
-    animation: bannerPulseDanger 2s ease-in-out 3;
+    background: var(--negative-fill);
+    border-color: var(--negative);
+    color: var(--negative);
 }
 
 .warning-icon {
@@ -526,70 +626,60 @@ textarea.nq-input {
     flex-shrink: 0;
 }
 
-@keyframes bannerPulse {
-    0%, 100% { background: rgba(245, 166, 35, 0.12); }
-    50% { background: rgba(245, 166, 35, 0.25); }
-}
-
-@keyframes bannerPulseDanger {
-    0%, 100% { background: rgba(217, 68, 50, 0.1); }
-    50% { background: rgba(217, 68, 50, 0.22); }
-}
-
-/* ---- Verification challenge screen ---- */
+/* ---- Verification challenge ---- */
 .verify-progress {
     display: flex;
     justify-content: center;
-    gap: 8px;
-    margin-top: 12px;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
 }
 
 .verify-dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--border-color);
-    transition: background 0.3s, transform 0.3s;
+    background: var(--edge);
+    transition: background var(--t-base), transform var(--t-base);
 }
 
 .verify-dot.dot-correct {
-    background: var(--nq-green);
+    background: var(--positive);
     transform: scale(1.2);
 }
 
 .verify-fields {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-4);
 }
 
 .verify-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
 }
 
 .verify-label {
-    font-size: 13px;
+    font-size: var(--text-s);
     font-weight: 700;
-    color: var(--text-secondary);
+    color: var(--ink-secondary);
     letter-spacing: 0.03em;
 }
 
 .verify-input {
-    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
-    font-size: 15px;
+    font-family: var(--font-mono);
+    font-size: var(--text-m);
     letter-spacing: 0.05em;
 }
 
 .verify-input.verify-correct {
-    border-color: var(--nq-green);
-    background: rgba(33, 188, 165, 0.06);
+    border-color: var(--positive);
+    background: var(--positive-fill);
 }
 
 .verify-input.verify-wrong {
-    border-color: var(--nq-red);
-    background: rgba(217, 68, 50, 0.06);
+    border-color: var(--negative);
+    background: var(--negative-fill);
 }
 
 .verify-error {
@@ -597,18 +687,9 @@ textarea.nq-input {
     font-size: 12px;
 }
 
-.btn-verify-ready {
-    animation: verifyGlow 1s ease-in-out infinite alternate;
-}
-
-@keyframes verifyGlow {
-    from { box-shadow: 0 4px 12px rgba(5, 130, 202, 0.3); }
-    to { box-shadow: 0 4px 20px rgba(5, 130, 202, 0.6); }
-}
-
 /* ---- Acknowledgment screen ---- */
 .ack-sentence-input {
-    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
+    font-family: var(--font-mono);
     font-size: 14px;
     min-height: 56px;
     line-height: 1.5;
@@ -616,98 +697,67 @@ textarea.nq-input {
 }
 
 .ack-match-display {
-    font-family: 'Fira Mono', 'Fira Code', 'Courier New', monospace;
-    font-size: 13px;
+    font-family: var(--font-mono);
+    font-size: var(--text-s);
     padding: 8px 12px;
-    border-radius: 6px;
-    background: var(--bg-subtle);
+    border: 1px solid var(--edge);
+    border-radius: var(--radius-s);
+    background: var(--fill-subtle);
     margin-top: 6px;
     line-height: 1.5;
     min-height: 24px;
 }
 
 .ack-match-correct {
-    color: var(--nq-green);
+    color: var(--positive);
 }
 
 .ack-match-wrong {
-    color: var(--nq-red);
+    color: var(--negative);
     text-decoration: underline wavy;
 }
 
 .ack-match-remaining {
-    color: var(--text-hint);
+    color: var(--ink-muted);
 }
 
-/* ---- Dark mode: biometric fingerprint ---- */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .biometric-trigger {
-        color: #C06070;
-    }
-    :root:not([data-theme="light"]) .biometric-trigger svg {
-        animation-name: fingerprint-pulse-dark;
-    }
-}
-
-:root[data-theme="dark"] .biometric-trigger {
-    color: #C06070;
-}
-
-:root[data-theme="dark"] .biometric-trigger svg {
-    animation-name: fingerprint-pulse-dark;
-}
-
-@keyframes fingerprint-pulse-dark {
-    0%, 100% { opacity: 1; color: #C06070; }
-    50% { opacity: 0.45; color: #D07080; }
-}
-
-/* ---- Dark mode additions for new components ---- */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .warning-banner {
-        background: rgba(245, 166, 35, 0.15);
-        border-color: rgba(245, 166, 35, 0.3);
-        color: #f5a623;
-    }
-    :root:not([data-theme="light"]) .warning-banner-danger {
-        background: rgba(217, 68, 50, 0.15);
-        border-color: rgba(217, 68, 50, 0.3);
-        color: #e8604f;
-    }
-    :root:not([data-theme="light"]) .verify-input.verify-correct {
-        background: rgba(33, 188, 165, 0.1);
-    }
-    :root:not([data-theme="light"]) .verify-input.verify-wrong {
-        background: rgba(217, 68, 50, 0.1);
-    }
-}
-
-:root[data-theme="dark"] .warning-banner {
-    background: rgba(245, 166, 35, 0.15);
-    border-color: rgba(245, 166, 35, 0.3);
-    color: #f5a623;
-}
-
-:root[data-theme="dark"] .warning-banner-danger {
-    background: rgba(217, 68, 50, 0.15);
-    border-color: rgba(217, 68, 50, 0.3);
-    color: #e8604f;
-}
-
-:root[data-theme="dark"] .verify-input.verify-correct {
-    background: rgba(33, 188, 165, 0.1);
-}
-
-:root[data-theme="dark"] .verify-input.verify-wrong {
-    background: rgba(217, 68, 50, 0.1);
-}
-
-/* ── Polygon (USDC/USDT) confirmation ── */
-
+/* ---- Polygon (USDC/USDT) confirmation ---- */
 .polygon-confirm .tx-value.polygon-address {
-    font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     word-break: break-all;
     text-align: right;
     max-width: 65%;
+}
+
+/* ---- Utilities ---- */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    /* Busy ring stays visible as a static affordance */
+    button[aria-busy="true"]::after {
+        animation: none;
+        opacity: 0.5;
+    }
+
+    .biometric-trigger svg {
+        animation: none;
+    }
 }

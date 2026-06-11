@@ -20,18 +20,18 @@ export function settingsView() {
             <div class="nq-card-body">
                 <div class="settings-section">
                     <h2 class="nq-label">Appearance</h2>
-                    <div class="network-toggle">
-                        <button class="nq-button-s ${currentTheme === 'auto' ? 'selected' : ''}" id="btn-theme-auto">Auto</button>
-                        <button class="nq-button-s ${currentTheme === 'light' ? 'selected' : ''}" id="btn-theme-light">Light</button>
-                        <button class="nq-button-s ${currentTheme === 'dark' ? 'selected' : ''}" id="btn-theme-dark">Dark</button>
+                    <div class="network-toggle" role="group" aria-label="Theme">
+                        <button class="nq-button-s ${currentTheme === 'auto' ? 'selected' : ''}" aria-pressed="${currentTheme === 'auto'}" id="btn-theme-auto">Auto</button>
+                        <button class="nq-button-s ${currentTheme === 'light' ? 'selected' : ''}" aria-pressed="${currentTheme === 'light'}" id="btn-theme-light">Light</button>
+                        <button class="nq-button-s ${currentTheme === 'dark' ? 'selected' : ''}" aria-pressed="${currentTheme === 'dark'}" id="btn-theme-dark">Dark</button>
                     </div>
                 </div>
 
                 <div class="settings-section">
                     <h2 class="nq-label">Network</h2>
-                    <div class="network-toggle">
-                        <button class="nq-button-s ${currentNetwork === 'main' ? 'selected' : ''}" id="btn-mainnet">Mainnet</button>
-                        <button class="nq-button-s ${currentNetwork === 'test' ? 'selected' : ''}" id="btn-testnet">Testnet</button>
+                    <div class="network-toggle" role="group" aria-label="Network">
+                        <button class="nq-button-s ${currentNetwork === 'main' ? 'selected' : ''}" aria-pressed="${currentNetwork === 'main'}" id="btn-mainnet">Mainnet</button>
+                        <button class="nq-button-s ${currentNetwork === 'test' ? 'selected' : ''}" aria-pressed="${currentNetwork === 'test'}" id="btn-testnet">Testnet</button>
                     </div>
                     ${currentNetwork === 'test' ? `
                         <p class="nq-text faucet-link">
@@ -44,37 +44,37 @@ export function settingsView() {
                 ${isStablecoinsEnabled() ? `
                 <div class="settings-section" id="polygon-section">
                     <h2 class="nq-label">Stablecoins (Polygon)</h2>
-                    <p class="nq-text" style="margin-bottom: 12px;" id="polygon-status">Checking…</p>
+                    <p class="nq-text" style="margin-bottom: 12px;" id="polygon-status" aria-live="polite">Checking…</p>
                     <button class="nq-button-s" id="btn-polygon-activate" style="display: none;">Activate Polygon</button>
-                    <p class="nq-text error-text" id="polygon-error" style="display: none; margin-top: 8px;"></p>
+                    <p class="nq-text error-text" id="polygon-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>` : ''}
 
                 <div class="settings-section" id="security-section">
                     <h2 class="nq-label">Security</h2>
-                    <p class="nq-text" style="margin-bottom: 12px;" id="webauthn-status">Checking biometric support...</p>
+                    <p class="nq-text" style="margin-bottom: 12px;" id="webauthn-status" aria-live="polite">Checking biometric support...</p>
                     <button class="nq-button-s" id="btn-webauthn" style="display: none;"></button>
-                    <p class="nq-text error-text" id="webauthn-error" style="display: none; margin-top: 8px;"></p>
+                    <p class="nq-text error-text" id="webauthn-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>
 
                 <div class="settings-section" id="switch-section" style="display: none;">
                     <h2 class="nq-label">Accounts</h2>
                     <p class="nq-text" style="margin-bottom: 12px;">Switch between different wallets linked to your passkey.</p>
                     <button class="nq-button-s" id="btn-switch">Switch Account</button>
-                    <p class="nq-text error-text" id="switch-error" style="display: none; margin-top: 8px;"></p>
+                    <p class="nq-text error-text" id="switch-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>
 
                 <div class="settings-section">
                     <h2 class="nq-label">Backup</h2>
                     <p class="nq-text" style="margin-bottom: 12px;">The keyguard will ask for your password and display your recovery words securely.</p>
                     <button class="nq-button-s" id="btn-export">Show Recovery Words</button>
-                    <p class="nq-text error-text" id="export-error" style="display: none; margin-top: 8px;"></p>
+                    <p class="nq-text error-text" id="export-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>
 
                 <div class="settings-section danger-section">
                     <h2 class="nq-label">Danger Zone</h2>
                     <button class="nq-button-s red" id="btn-logout">Log Out</button>
                     <p class="nq-text danger-text">This removes your wallet from this device. If you set up a passkey, you can log back in with it. Make sure you have your recovery words backed up!</p>
-                    <p class="nq-text error-text" id="logout-error" style="display: none; margin-top: 8px;"></p>
+                    <p class="nq-text error-text" id="logout-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>
             </div>
             <div class="nq-card-footer">
@@ -96,8 +96,13 @@ export function settingsView() {
         } else {
             document.documentElement.setAttribute('data-theme', theme);
         }
-        el.querySelectorAll('#btn-theme-auto, #btn-theme-light, #btn-theme-dark').forEach(b => b.classList.remove('selected'));
-        el.querySelector(`#btn-theme-${theme}`).classList.add('selected');
+        el.querySelectorAll('#btn-theme-auto, #btn-theme-light, #btn-theme-dark').forEach(b => {
+            b.classList.remove('selected');
+            b.setAttribute('aria-pressed', 'false');
+        });
+        const activeBtn = el.querySelector(`#btn-theme-${theme}`);
+        activeBtn.classList.add('selected');
+        activeBtn.setAttribute('aria-pressed', 'true');
         syncThemeToKeyguard();
     }
 
@@ -125,6 +130,7 @@ export function settingsView() {
         const btn = el.querySelector('#btn-export');
         const errorEl = el.querySelector('#export-error');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
@@ -138,6 +144,7 @@ export function settingsView() {
             }
         } finally {
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Show Recovery Words';
         }
     });
@@ -147,6 +154,7 @@ export function settingsView() {
         const btn = el.querySelector('#btn-logout');
         const errorEl = el.querySelector('#logout-error');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
@@ -163,6 +171,7 @@ export function settingsView() {
                 errorEl.style.display = '';
             }
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Log Out';
         }
     });
@@ -190,6 +199,7 @@ export function settingsView() {
 
         activateBtn.addEventListener('click', async () => {
             activateBtn.disabled = true;
+            activateBtn.setAttribute('aria-busy', 'true');
             activateBtn.textContent = 'Opening keyguard...';
             errorEl.style.display = 'none';
             try {
@@ -197,8 +207,10 @@ export function settingsView() {
                 resetPolygonCache();
                 statusEl.textContent = `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`;
                 activateBtn.style.display = 'none';
+                activateBtn.removeAttribute('aria-busy');
             } catch (e) {
                 activateBtn.disabled = false;
+                activateBtn.removeAttribute('aria-busy');
                 activateBtn.textContent = 'Activate Polygon';
                 if (e.message !== 'User cancelled') {
                     errorEl.textContent = 'Activation failed. Please try again.';
@@ -262,6 +274,7 @@ export function settingsView() {
         const btn = el.querySelector('#btn-switch');
         const errorEl = el.querySelector('#switch-error');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
@@ -276,12 +289,14 @@ export function settingsView() {
             }
         } finally {
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Switch Account';
         }
     });
 
     webauthnBtn.addEventListener('click', async () => {
         webauthnBtn.disabled = true;
+        webauthnBtn.setAttribute('aria-busy', 'true');
         webauthnError.style.display = 'none';
         const wasEnabled = webauthnBtn.textContent.startsWith('Disable');
         webauthnBtn.textContent = 'Opening keyguard...';
@@ -302,6 +317,7 @@ export function settingsView() {
             }
         } finally {
             webauthnBtn.disabled = false;
+            webauthnBtn.removeAttribute('aria-busy');
             await updateWebAuthnUI();
         }
     });

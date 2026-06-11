@@ -86,24 +86,24 @@ export async function sendView() {
         panel.innerHTML = `
             <div class="nq-card-body">
                 <div class="form-group">
-                    <label class="nq-label">Recipient Address</label>
+                    <label class="nq-label" for="recipient">Recipient Address</label>
                     <input type="text" class="nq-input" id="recipient" placeholder="NQ...">
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Amount (NIM)</label>
+                    <label class="nq-label" for="amount">Amount (NIM)</label>
                     <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.00001" min="0">
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Message (optional, max 64 bytes)</label>
+                    <label class="nq-label" for="message">Message (optional, max 64 bytes)</label>
                     <input type="text" class="nq-input" id="message" placeholder="Optional message">
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Fee (luna)</label>
+                    <label class="nq-label" for="fee">Fee (luna)</label>
                     <input type="number" class="nq-input" id="fee" placeholder="0" value="0" min="0" step="1">
                 </div>
-                <p class="nq-text error-text" id="warning" style="display: none;"></p>
-                <p class="nq-text error-text" id="error" style="display: none;"></p>
-                <div class="success-message" id="success" style="display: none;">
+                <p class="nq-text error-text" id="warning" role="alert" style="display: none;"></p>
+                <p class="nq-text error-text" id="error" role="alert" style="display: none;"></p>
+                <div class="success-message" id="success" role="status" style="display: none;">
                     <p class="nq-text success-text">Transaction sent successfully!</p>
                     <p class="nq-text tx-hash" id="tx-hash"></p>
                 </div>
@@ -174,6 +174,7 @@ export async function sendView() {
 
             const btn = panel.querySelector('#btn-send');
             btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
             btn.textContent = 'Opening keyguard...';
             sending = true;
 
@@ -206,6 +207,7 @@ export async function sendView() {
 
                 successEl.style.display = '';
                 panel.querySelector('#tx-hash').textContent = `TX: ${result.transactionHash.substring(0, 16)}...`;
+                btn.removeAttribute('aria-busy');
                 btn.textContent = 'Done';
                 showToast('Transaction sent!', 'success');
 
@@ -213,6 +215,7 @@ export async function sendView() {
             } catch (e) {
                 sending = false;
                 btn.disabled = false;
+                btn.removeAttribute('aria-busy');
                 btn.textContent = 'Send';
 
                 // User cancelled in keyguard — silently re-enable, no error shown
@@ -239,24 +242,24 @@ export async function sendView() {
         panel.innerHTML = `
             <div class="nq-card-body">
                 <div class="form-group">
-                    <label class="nq-label">Recipient Address (Polygon)</label>
+                    <label class="nq-label" for="recipient">Recipient Address (Polygon)</label>
                     <input type="text" class="nq-input" id="recipient" placeholder="0x..." autocomplete="off" spellcheck="false">
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Amount (${symbol})</label>
+                    <label class="nq-label" for="amount">Amount (${symbol})</label>
                     <div class="amount-with-max">
                         <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.000001" min="0">
                         <button class="nq-button-s" id="btn-max" type="button">Max</button>
                     </div>
-                    <p class="nq-text nq-text-s" id="token-balance">Balance: …</p>
+                    <p class="nq-text nq-text-s" id="token-balance" aria-live="polite">Balance: …</p>
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Network Fee (paid in ${symbol})</label>
-                    <p class="nq-text" id="fee-display">Estimating…</p>
+                    <span class="nq-label">Network Fee (paid in ${symbol})</span>
+                    <p class="nq-text" id="fee-display" aria-live="polite">Estimating…</p>
                 </div>
-                <p class="nq-text error-text" id="warning" style="display: none;"></p>
-                <p class="nq-text error-text" id="error" style="display: none;"></p>
-                <div class="success-message" id="success" style="display: none;">
+                <p class="nq-text error-text" id="warning" role="alert" style="display: none;"></p>
+                <p class="nq-text error-text" id="error" role="alert" style="display: none;"></p>
+                <div class="success-message" id="success" role="status" style="display: none;">
                     <p class="nq-text success-text">Transaction sent successfully!</p>
                     <p class="nq-text tx-hash" id="tx-hash"></p>
                 </div>
@@ -346,6 +349,7 @@ export async function sendView() {
 
             const btn = panel.querySelector('#btn-send');
             btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
             sending = true;
 
             try {
@@ -361,6 +365,7 @@ export async function sendView() {
 
                 successEl.style.display = '';
                 panel.querySelector('#tx-hash').textContent = `TX: ${result.txHash.substring(0, 18)}...`;
+                btn.removeAttribute('aria-busy');
                 btn.textContent = 'Done';
                 showToast('Transaction sent!', 'success');
 
@@ -387,6 +392,7 @@ export async function sendView() {
             } catch (e) {
                 sending = false;
                 btn.disabled = false;
+                btn.removeAttribute('aria-busy');
                 btn.textContent = 'Send';
 
                 if (e.message === 'User cancelled') return;

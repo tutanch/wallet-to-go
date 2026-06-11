@@ -12,7 +12,7 @@ export function importView() {
                 <p class="nq-text">The keyguard will securely collect your recovery words and set a new password.</p>
             </div>
             <div class="nq-card-body">
-                <p class="nq-text error-text" id="error" style="display:none;"></p>
+                <p class="nq-text error-text" id="error" role="alert" style="display:none;"></p>
             </div>
             <div class="nq-card-footer">
                 <button class="nq-button-s" id="btn-back">Back</button>
@@ -27,6 +27,7 @@ export function importView() {
         const btn = el.querySelector('#btn-import');
         const errorEl = el.querySelector('#error');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
@@ -42,6 +43,7 @@ export function importView() {
                 errorEl.style.display = '';
             }
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Import Wallet';
         }
     });

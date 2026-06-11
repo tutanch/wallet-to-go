@@ -21,6 +21,28 @@ function isTrustedKeyguardMessage(event) {
     return !!frame?.contentWindow && event.source === frame.contentWindow;
 }
 
+// ── Overlay focus management ───────────────────────────────────────────────
+// While the keyguard overlay is visible, the wallet behind it must be inert
+// (keyboard focus must not reach controls under the overlay). Focus returns
+// to the invoking element when the keyguard hides.
+
+let lastFocus = null;
+
+function setFrameVisible(frame, visible) {
+    const wasVisible = frame.style.display !== 'none';
+    frame.style.display = visible ? '' : 'none';
+    const app = document.getElementById('app');
+    if (visible) {
+        if (!wasVisible) lastFocus = document.activeElement;
+        app?.setAttribute('inert', '');
+        frame.focus();
+    } else {
+        app?.removeAttribute('inert');
+        if (lastFocus?.isConnected && typeof lastFocus.focus === 'function') lastFocus.focus();
+        lastFocus = null;
+    }
+}
+
 // ── Keyguard ready promise ─────────────────────────────────────────────────
 // Resolves when the keyguard iframe sends { type: 'ready' }.
 // main.js awaits this (in parallel with loadNimiq()) before making any calls.
@@ -92,13 +114,13 @@ window.addEventListener('message', (event) => {
 
     if (type === 'show') {
         const frame = document.getElementById('keyguard-frame');
-        if (frame) frame.style.display = '';
+        if (frame) setFrameVisible(frame, true);
         return;
     }
 
     if (type === 'hide') {
         const frame = document.getElementById('keyguard-frame');
-        if (frame) frame.style.display = 'none';
+        if (frame) setFrameVisible(frame, false);
         return;
     }
 
@@ -175,7 +197,7 @@ function call(command, args, timeoutMs = 120000) {
         // Show the iframe immediately for UI commands instead of waiting
         // for the keyguard's round-trip 'show' message (which can be unreliable).
         if (UI_COMMANDS.has(command)) {
-            frame.style.display = '';
+            setFrameVisible(frame, true);
         }
         frame.contentWindow.postMessage(
             { sessionId: id, command, args: args || {} },

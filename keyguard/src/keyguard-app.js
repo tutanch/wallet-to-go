@@ -149,6 +149,7 @@ const FINGERPRINT_SVG = `<svg width="64" height="64" viewBox="0 0 24 24" fill="n
 </svg>`;
 
 function showError(el, msg) {
+    el.setAttribute('role', 'alert');
     el.textContent = msg;
     el.style.display = '';
 }
@@ -156,6 +157,7 @@ function showError(el, msg) {
 function setButtonState(btn, text, disabled) {
     btn.textContent = text;
     btn.disabled = disabled;
+    btn.toggleAttribute('aria-busy', disabled);
 }
 
 /**
@@ -320,13 +322,15 @@ function renderPasswordForm({ title, subtitle, isNew }) {
                     ${isNew ? '<input type="text" autocomplete="username" style="display:none;">' : ''}
                     <div class="keyguard-body">
                         <div class="form-group">
-                            <input type="password" class="nq-input" id="password" placeholder="Password"
+                            <label class="kg-label" for="password">Password</label>
+                            <input type="password" class="nq-input" id="password"
                                 autocomplete="${isNew ? 'new-password' : 'current-password'}">
                         </div>
                         ${isNew ? `
                         <div class="form-group">
+                            <label class="kg-label" for="password-confirm">Confirm password</label>
                             <input type="password" class="nq-input" id="password-confirm"
-                                placeholder="Confirm password" autocomplete="new-password">
+                                autocomplete="new-password">
                         </div>` : ''}
                         <p class="error-text" id="error" style="display:none;"></p>
                     </div>
@@ -352,6 +356,7 @@ function renderWordEntry() {
                 <form id="words-form" style="display: contents;">
                     <div class="keyguard-body">
                         <div class="form-group">
+                            <label class="kg-label" for="mnemonic">Recovery words</label>
                             <textarea class="nq-input mnemonic-input" id="mnemonic" rows="5"
                                 placeholder="word1 word2 word3 ... word24"></textarea>
                         </div>
@@ -476,8 +481,8 @@ function renderDeleteConfirm() {
                 <form id="delete-form" style="display: contents;">
                     <div class="keyguard-body">
                         <div class="form-group">
-                            <input type="text" class="nq-input" id="confirm-text"
-                                placeholder='Type "LOGOUT" to confirm' autocomplete="off">
+                            <label class="kg-label" for="confirm-text">Type "LOGOUT" to confirm</label>
+                            <input type="text" class="nq-input" id="confirm-text" autocomplete="off">
                         </div>
                         <p class="error-text" id="error" style="display:none;"></p>
                     </div>
@@ -679,6 +684,15 @@ const ui = document.getElementById('keyguard-ui');
 
 function setUI(html) {
     ui.innerHTML = html;
+    if (!html) return;
+    // Move focus into the freshly rendered overlay so keyboard/screen-reader
+    // users land on the relevant control instead of the document root.
+    const target = ui.querySelector('[data-autofocus]')
+        || ui.querySelector('input:not([type="hidden"]):not([style*="display:none"]), textarea')
+        || ui.querySelector('h1');
+    if (!target) return;
+    if (target.tagName === 'H1') target.setAttribute('tabindex', '-1');
+    try { target.focus(); } catch (_) {}
 }
 
 // Track the next account index for multi-account passkey wallets.
@@ -1078,6 +1092,7 @@ function wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRe
 
     biometricBtn.onclick = async () => {
         biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
         biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
         try {
             const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
@@ -1088,6 +1103,7 @@ function wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRe
             resolveSession({ serializedTx }, [serializedTx.buffer]);
         } catch (err) {
             biometricBtn.disabled = false;
+            biometricBtn.removeAttribute('aria-busy');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
             showError(errorEl, err.name === 'NotAllowedError'
                 ? 'Cancelled. Tap to try again.'
@@ -1229,6 +1245,7 @@ async function flowSignPolygonTransaction(args) {
         const errorEl = ui.querySelector('#error');
         biometricBtn.onclick = async () => {
             biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
             try {
                 const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
@@ -1239,6 +1256,7 @@ async function flowSignPolygonTransaction(args) {
                 resolveSession(result);
             } catch (err) {
                 biometricBtn.disabled = false;
+                biometricBtn.removeAttribute('aria-busy');
                 biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
                 showError(errorEl, err.name === 'NotAllowedError'
                     ? 'Cancelled. Tap to try again.'
@@ -1327,6 +1345,7 @@ async function flowActivatePolygon() {
         const errorEl = ui.querySelector('#error');
         biometricBtn.onclick = async () => {
             biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
             try {
                 const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
@@ -1335,6 +1354,7 @@ async function flowActivatePolygon() {
                 resolveSession(result);
             } catch (err) {
                 biometricBtn.disabled = false;
+                biometricBtn.removeAttribute('aria-busy');
                 biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to activate';
                 showError(errorEl, err.name === 'NotAllowedError'
                     ? 'Cancelled. Tap to try again.'
@@ -1405,6 +1425,7 @@ function wireBiometricBatchSign(info, passwordSet, args, subtitle) {
 
     biometricBtn.onclick = async () => {
         biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
         biometricBtn.querySelector('.biometric-hint').textContent = 'Signing...';
         try {
             const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
@@ -1418,6 +1439,7 @@ function wireBiometricBatchSign(info, passwordSet, args, subtitle) {
             resolveSession(result, transfer);
         } catch (err) {
             biometricBtn.disabled = false;
+            biometricBtn.removeAttribute('aria-busy');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to sign';
             showError(errorEl, err.name === 'NotAllowedError'
                 ? 'Cancelled. Tap to try again.'
@@ -1555,6 +1577,7 @@ async function flowExportMnemonic() {
 
         biometricBtn.onclick = async () => {
             biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
             try {
                 const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
@@ -1566,6 +1589,7 @@ async function flowExportMnemonic() {
                 showExportedWords(words);
             } catch (err) {
                 biometricBtn.disabled = false;
+                biometricBtn.removeAttribute('aria-busy');
                 biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to authenticate';
                 showError(errorEl, err.name === 'NotAllowedError'
                     ? 'Cancelled. Tap to try again.'
@@ -1834,6 +1858,7 @@ async function flowRestoreWithPasskey(args) {
 
     biometricBtn.onclick = async () => {
         biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
         biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
 
         let prfKey;
@@ -1846,6 +1871,7 @@ async function flowRestoreWithPasskey(args) {
             credentialId = result.credentialId;
         } catch (err) {
             biometricBtn.disabled = false;
+            biometricBtn.removeAttribute('aria-busy');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to login';
             if (err.name === 'NotAllowedError') {
                 showError(errorEl, 'Cancelled or no passkey found. Tap to try again.');
@@ -1895,6 +1921,7 @@ async function flowSwitchAccount() {
 
     biometricBtn.onclick = async () => {
         biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
         biometricBtn.querySelector('.biometric-hint').textContent = 'Authenticating...';
 
         let prfKey;
@@ -1907,6 +1934,7 @@ async function flowSwitchAccount() {
             credentialId = result.credentialId;
         } catch (err) {
             biometricBtn.disabled = false;
+            biometricBtn.removeAttribute('aria-busy');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to authenticate';
             if (err.name === 'NotAllowedError') {
                 showError(errorEl, 'Cancelled. Tap to try again.');
@@ -2024,6 +2052,7 @@ async function flowCashlinkCrypto(args, workerCommand, title) {
 
         biometricBtn.onclick = async () => {
             biometricBtn.disabled = true;
+        biometricBtn.setAttribute('aria-busy', 'true');
             biometricBtn.querySelector('.biometric-hint').textContent = 'Processing...';
             try {
                 const prfKey = await getWebAuthnPrfKey(info.credentialId, info.prfSalt);
@@ -2034,6 +2063,7 @@ async function flowCashlinkCrypto(args, workerCommand, title) {
                 resolveSession(result);
             } catch (err) {
                 biometricBtn.disabled = false;
+                biometricBtn.removeAttribute('aria-busy');
                 biometricBtn.querySelector('.biometric-hint').textContent = 'Tap to authenticate';
                 showError(errorEl, err.name === 'NotAllowedError'
                     ? 'Cancelled. Tap to try again.'

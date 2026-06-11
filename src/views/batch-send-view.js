@@ -37,7 +37,7 @@ export async function batchSendView() {
             </div>
             <div class="nq-card-body">
                 <div class="form-group">
-                    <label class="nq-label">Recipients</label>
+                    <label class="nq-label" for="recipients">Recipients</label>
                     <textarea class="nq-input" id="recipients" rows="6"
                         placeholder="One per line — address only or address, amount&#10;NQ52 2CNA U8HC N61T HA9G 1X44 79Q0 VBCE LK14&#10;NQ07 ..., 10.5"></textarea>
                     <div class="file-upload-wrapper">
@@ -46,18 +46,18 @@ export async function batchSendView() {
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Default amount (NIM) — used when no per-line amount</label>
+                    <label class="nq-label" for="amount">Default amount (NIM) — used when no per-line amount</label>
                     <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.00001" min="0">
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Fee per transaction (luna)</label>
+                    <label class="nq-label" for="fee">Fee per transaction (luna)</label>
                     <input type="number" class="nq-input" id="fee" placeholder="0" value="0" min="0" step="1">
                 </div>
                 <div class="form-group">
-                    <label class="nq-label">Message (optional, max 64 bytes, applied to all)</label>
+                    <label class="nq-label" for="message">Message (optional, max 64 bytes, applied to all)</label>
                     <input type="text" class="nq-input" id="message" placeholder="Optional message">
                 </div>
-                <p class="nq-text error-text" id="error" style="display:none;"></p>
+                <p class="nq-text error-text" id="error" role="alert" style="display:none;"></p>
             </div>
             <div class="nq-card-footer">
                 <button class="nq-button-s" id="btn-back">Back</button>
@@ -200,15 +200,15 @@ export async function batchSendView() {
                             <div class="lbl">Balance</div>
                         </div>
                     </div>
-                    <p class="nq-text error-text" id="balance-warning" style="display:none;"></p>
+                    <p class="nq-text error-text" id="balance-warning" role="alert" style="display:none;"></p>
                     <div class="batch-table-container">
                         <table class="batch-table">
                             <thead><tr><th>#</th><th>Recipient</th><th>Amount (NIM)</th><th>Status</th></tr></thead>
                             <tbody id="batch-tbody"></tbody>
                         </table>
                     </div>
-                    <p class="nq-text error-text" id="error" style="display:none;"></p>
-                    <div id="batch-result" style="display:none;">
+                    <p class="nq-text error-text" id="error" role="alert" style="display:none;"></p>
+                    <div id="batch-result" role="status" style="display:none;">
                         <p class="nq-text success-text" id="result-text"></p>
                     </div>
                 </div>
@@ -263,6 +263,7 @@ export async function batchSendView() {
             const amountInput = document.createElement('input');
             amountInput.type = 'number';
             amountInput.className = 'batch-amount-input';
+            amountInput.setAttribute('aria-label', `Amount for row ${i + 1}`);
             amountInput.value = lunaToNim(r.amountLuna);
             amountInput.step = '0.00001';
             amountInput.min = '0';
@@ -322,6 +323,7 @@ export async function batchSendView() {
         errorEl.style.display = 'none';
 
         btnSign.disabled = true;
+        btnSign.setAttribute('aria-busy', 'true');
         btnSign.textContent = 'Opening keyguard...';
 
         // Disable amount inputs during signing
@@ -411,6 +413,7 @@ export async function batchSendView() {
 
         } catch (e) {
             btnSign.disabled = false;
+            btnSign.removeAttribute('aria-busy');
             btnSign.textContent = 'Sign & Send';
             el.querySelectorAll('.batch-amount-input').forEach(inp => { inp.disabled = false; });
 

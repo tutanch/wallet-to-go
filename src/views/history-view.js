@@ -81,6 +81,7 @@ export async function historyView() {
             txList.innerHTML = '';
             const errorP = document.createElement('p');
             errorP.className = 'nq-text error-text';
+            errorP.setAttribute('role', 'alert');
             errorP.textContent = 'Failed to load: ' + e.message;
             txList.appendChild(errorP);
         }
@@ -116,11 +117,13 @@ export async function historyView() {
 
             loadOlderBtn.onclick = async () => {
                 loadOlderBtn.disabled = true;
+                loadOlderBtn.setAttribute('aria-busy', 'true');
                 loadOlderBtn.textContent = 'Scanning…';
                 try {
                     const { reachedFloor } = await history.loadOlder(polygonAddress, token);
                     if (gone || activeAsset !== token) return;
                     await render();
+                    loadOlderBtn.removeAttribute('aria-busy');
                     if (reachedFloor) {
                         loadOlderBtn.disabled = true;
                         loadOlderBtn.textContent = 'Beginning of history';
@@ -131,6 +134,7 @@ export async function historyView() {
                 } catch (e) {
                     if (gone || activeAsset !== token) return;
                     loadOlderBtn.disabled = false;
+                    loadOlderBtn.removeAttribute('aria-busy');
                     loadOlderBtn.textContent = 'Load older (failed — retry)';
                 }
             };
@@ -139,6 +143,7 @@ export async function historyView() {
             txList.innerHTML = '';
             const errorP = document.createElement('p');
             errorP.className = 'nq-text error-text';
+            errorP.setAttribute('role', 'alert');
             errorP.textContent = 'Polygon network unavailable. Please try again.';
             txList.appendChild(errorP);
         }
@@ -192,6 +197,7 @@ export function renderTxItem(tx, ownAddress) {
 
     const dirDiv = document.createElement('div');
     dirDiv.className = 'tx-direction';
+    dirDiv.setAttribute('aria-hidden', 'true');
     dirDiv.textContent = isSent ? '↑' : '↓';
 
     const detailsDiv = document.createElement('div');
@@ -232,6 +238,7 @@ export function renderTokenTxItem(tx) {
 
     const dirDiv = document.createElement('div');
     dirDiv.className = 'tx-direction';
+    dirDiv.setAttribute('aria-hidden', 'true');
     dirDiv.textContent = tx.failed ? '✕' : tx.incoming ? '↓' : '↑';
 
     const detailsDiv = document.createElement('div');

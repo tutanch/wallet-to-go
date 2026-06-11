@@ -69,6 +69,31 @@ const hashEntries = files.map(f => [
 ]);
 const hashMap = Object.fromEntries(hashEntries);
 
+// ── Design-token sync guard ───────────────────────────────────────────────
+// The wallet and keyguard deploy to separate origins, so they each carry a
+// copy of the design-token block (between the sentinel comments below).
+// Warn-only: a drifted token block is cosmetic and must never block a deploy.
+function extractTokenBlock(cssPath) {
+    try {
+        const css = readFileSync(cssPath, 'utf8');
+        const match = css.match(/\/\* == DESIGN TOKENS[\s\S]*?\/\* == END DESIGN TOKENS == \*\//);
+        if (!match) return null;
+        // Compare declarations only — comments may legitimately differ per origin
+        return match[0].replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim();
+    } catch {
+        return null;
+    }
+}
+{
+    const walletTokens = extractTokenBlock(join(ROOT, 'src/styles/app.css'));
+    const keyguardTokens = extractTokenBlock(join(ROOT, 'keyguard/src/styles/keyguard.css'));
+    if (!walletTokens || !keyguardTokens) {
+        console.warn('⚠ Design-token sentinel block missing in app.css or keyguard.css');
+    } else if (walletTokens !== keyguardTokens) {
+        console.warn('⚠ Design-token blocks differ between src/styles/app.css and keyguard/src/styles/keyguard.css — keep them in sync');
+    }
+}
+
 const sw = `// AUTO-GENERATED — do not edit manually.
 // Run: node scripts/generate-sw.js
 // Generated from git SHA: ${version}

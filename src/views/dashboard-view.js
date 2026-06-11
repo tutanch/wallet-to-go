@@ -139,19 +139,20 @@ export async function dashboardView() {
         <div class="nq-card dashboard-card">
             <div class="nq-card-header">
                 <div class="status-bar">
-                    <span class="consensus-indicator" id="d-consensus"></span>
+                    <span class="consensus-indicator" id="d-consensus" role="status"></span>
                     <span class="network-label">${networkLabel}</span>
                     <span class="block-height" id="d-block-height" style="display:none;"></span>
                 </div>
                 <div class="balance-display">
+                    <span class="nq-label">Balance</span>
                     <span class="balance-amount nq-h1" id="d-balance">...</span>
                     <span class="balance-currency">NIM</span>
                 </div>
                 <div class="address-row">
-                    <div class="address-display" id="address-copy" title="Click to copy">
+                    <div class="address-display" id="address-copy" title="Click to copy" role="button" tabindex="0" aria-label="Copy address">
                         <span class="address-text" id="d-address"></span>
                     </div>
-                    ${hasMultiple ? '<button class="addr-picker-btn" id="btn-addr-picker" title="Switch address">&#9662;</button>' : ''}
+                    ${hasMultiple ? '<button class="addr-picker-btn" id="btn-addr-picker" title="Switch address" aria-label="Switch address" aria-expanded="false">&#9662;</button>' : ''}
                 </div>
                 <div class="addr-picker-dropdown" id="addr-picker" style="display:none;"></div>
             </div>
@@ -206,7 +207,10 @@ export async function dashboardView() {
         if (!pickerOpen) return;
         pickerOpen = false;
         $picker.style.display = 'none';
-        if ($pickerBtn) $pickerBtn.classList.remove('open');
+        if ($pickerBtn) {
+            $pickerBtn.classList.remove('open');
+            $pickerBtn.setAttribute('aria-expanded', 'false');
+        }
         document.removeEventListener('click', onOutsideClick, true);
     }
 
@@ -266,7 +270,10 @@ export async function dashboardView() {
         if (pickerOpen) { closePicker(); return; }
         pickerOpen = true;
         $picker.style.display = '';
-        if ($pickerBtn) $pickerBtn.classList.add('open');
+        if ($pickerBtn) {
+            $pickerBtn.classList.add('open');
+            $pickerBtn.setAttribute('aria-expanded', 'true');
+        }
 
         // Show immediately without balances
         buildPickerRows(null);
@@ -305,6 +312,12 @@ export async function dashboardView() {
             setTimeout(() => display.classList.remove('copied'), 600);
         } catch {
             // Clipboard API may fail without HTTPS or permissions
+        }
+    });
+    el.querySelector('#address-copy').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            el.querySelector('#address-copy').click();
         }
     });
 
@@ -350,6 +363,7 @@ export async function dashboardView() {
         btn.textContent = 'Activate Polygon';
         btn.addEventListener('click', async () => {
             btn.disabled = true;
+            btn.setAttribute('aria-busy', 'true');
             btn.textContent = 'Waiting for keyguard…';
             try {
                 const { address } = await activatePolygon();
@@ -369,6 +383,7 @@ export async function dashboardView() {
                 refreshPolygon(true);
             } catch (e) {
                 btn.disabled = false;
+                btn.removeAttribute('aria-busy');
                 btn.textContent = 'Activate Polygon';
                 if (e.message !== 'User cancelled') {
                     showToast('Activation failed', 'error');

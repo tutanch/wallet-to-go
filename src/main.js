@@ -26,16 +26,21 @@ function showDisclaimer() {
 
         const overlay = document.createElement('div');
         overlay.className = 'disclaimer-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'disclaimer-title');
 
         const modal = document.createElement('div');
         modal.className = 'disclaimer-modal';
 
         const icon = document.createElement('div');
         icon.className = 'disclaimer-icon';
+        icon.setAttribute('aria-hidden', 'true');
         icon.textContent = '\u26A0';
 
         const title = document.createElement('h2');
         title.className = 'nq-h1';
+        title.id = 'disclaimer-title';
         title.textContent = 'Experimental Software';
 
         const body = document.createElement('div');
@@ -67,6 +72,7 @@ function showDisclaimer() {
         modal.append(icon, title, body, btn);
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
+        btn.focus();
     });
 }
 

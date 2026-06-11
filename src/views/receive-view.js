@@ -48,8 +48,8 @@ export async function receiveView() {
                 ${assetPills}
             </div>
             <div class="nq-card-body receive-body">
-                <div id="qr-container"></div>
-                <div class="address-display-large" id="address-copy" title="Click to copy">
+                <div id="qr-container" role="img" aria-label="Address QR code"></div>
+                <div class="address-display-large" id="address-copy" title="Click to copy" role="button" tabindex="0" aria-label="Copy address">
                     <span class="address-text-large" id="address-text"></span>
                 </div>
                 <button class="nq-button-s" id="btn-copy">Copy Address</button>
@@ -124,6 +124,12 @@ export async function receiveView() {
 
     el.querySelector('#btn-copy').addEventListener('click', copyAddress);
     el.querySelector('#address-copy').addEventListener('click', copyAddress);
+    el.querySelector('#address-copy').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            copyAddress();
+        }
+    });
 
     el.querySelector('#address-text').textContent = address;
 

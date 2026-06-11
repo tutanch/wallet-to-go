@@ -14,7 +14,7 @@ export function welcomeView() {
                 <button class="nq-button light-blue" id="btn-create">Create New Wallet</button>
                 <button class="nq-button-s" id="btn-import">Import Existing Wallet</button>
                 <button class="nq-button-s" id="btn-passkey" style="margin-top: 12px;">Login with Passkey</button>
-                <p class="nq-text error-text" id="passkey-error" style="display: none; margin-top: 8px;"></p>
+                <p class="nq-text error-text" id="passkey-error" role="alert" style="display: none; margin-top: 8px;"></p>
             </div>
         </div>
     `;
@@ -26,6 +26,7 @@ export function welcomeView() {
         const btn = el.querySelector('#btn-passkey');
         const errorEl = el.querySelector('#passkey-error');
         btn.disabled = true;
+        btn.setAttribute('aria-busy', 'true');
         btn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
@@ -36,6 +37,7 @@ export function welcomeView() {
             navigate('#dashboard');
         } catch (e) {
             btn.disabled = false;
+            btn.removeAttribute('aria-busy');
             btn.textContent = 'Login with Passkey';
             if (e.message !== 'User cancelled') {
                 errorEl.textContent = e.message || 'Passkey login failed.';
