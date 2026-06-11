@@ -5,7 +5,7 @@
 // Replace [KEYGUARD_ORIGIN] with the actual keyguard origin before deploying,
 // e.g. https://nimiq-wallet-keyguard.github.io
 
-const KEYGUARD_ORIGIN = '[KEYGUARD_ORIGIN]';
+export const KEYGUARD_ORIGIN = '[KEYGUARD_ORIGIN]';
 
 // ── Iframe reference ───────────────────────────────────────────────────────
 
@@ -43,42 +43,53 @@ function setFrameVisible(frame, visible) {
     }
 }
 
-// ── Keyguard ready promise ─────────────────────────────────────────────────
-// Resolves when the keyguard iframe sends { type: 'ready' }.
-// main.js awaits this (in parallel with loadNimiq()) before making any calls.
+// ── Keyguard iframe creation + ready promise ───────────────────────────────
+// SECURITY: the iframe is created by JS only AFTER the wallet's integrity gate
+// passes (see src/modules/keyguard-verify.js), never from static HTML — so a
+// tampered keyguard is never even attached. main.js calls createKeyguardFrame()
+// after verifyKeyguard() succeeds, then awaits keyguardReady.
 
+let readyResolve;
+let readyReject;
 export const keyguardReady = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-        reject(new Error('Keyguard iframe did not load within 15 seconds'));
-    }, 15000);
+    readyResolve = resolve;
+    readyReject = reject;
+});
 
-    window.addEventListener('message', function onReady(event) {
-        if (!isTrustedKeyguardMessage(event)) return;
-        if (event.data?.type === 'ready') {
-            clearTimeout(timeout);
-            window.removeEventListener('message', onReady);
-            resolve();
-        }
+// The 'ready' listener is installed at module load; it only fires once a
+// trusted keyguard frame exists (isTrustedKeyguardMessage checks the frame).
+window.addEventListener('message', function onReady(event) {
+    if (!isTrustedKeyguardMessage(event)) return;
+    if (event.data?.type === 'ready') {
+        window.removeEventListener('message', onReady);
+        readyResolve();
+    }
+});
+
+export function createKeyguardFrame() {
+    if (document.getElementById('keyguard-frame')) return; // already created
+
+    const frame = document.createElement('iframe');
+    frame.id = 'keyguard-frame';
+    frame.src = KEYGUARD_ORIGIN;
+    frame.title = 'Nimiq Keyguard';
+    // allow-same-origin lets the keyguard access its own IndexedDB key store.
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+    frame.style.cssText = 'display:none; position:fixed; inset:0; width:100%; height:100%; border:none; z-index:9999;';
+
+    const timeout = setTimeout(() => {
+        readyReject(new Error('Keyguard iframe did not load within 15 seconds'));
+    }, 15000);
+    keyguardReady.then(() => clearTimeout(timeout), () => clearTimeout(timeout));
+
+    // Re-request 'ready' once the cross-origin document has loaded, covering the
+    // race where the keyguard loaded before our message listener was attached.
+    frame.addEventListener('load', () => {
+        try { frame.contentWindow.postMessage({ type: 'ping' }, KEYGUARD_ORIGIN); } catch (_) {}
     });
 
-    // Ping the keyguard so it re-sends 'ready' if it already loaded before
-    // this listener was registered (race condition: cached iframe loads fast).
-    function ping() {
-        const frame = document.getElementById('keyguard-frame');
-        if (!frame) return;
-        // Only ping if the frame has already loaded cross-origin content.
-        // While the frame is still about:blank (same-origin), contentDocument
-        // is accessible; Chrome would throw a SecurityError on the postMessage
-        // and log it even when caught. Skip here — the load listener handles it.
-        let sameOrigin;
-        try { sameOrigin = frame.contentDocument !== null; } catch (_) { sameOrigin = false; }
-        if (sameOrigin) return;
-        try { frame.contentWindow.postMessage({ type: 'ping' }, KEYGUARD_ORIGIN); } catch (_) {}
-    }
-    ping(); // cover the already-loaded case (cross-origin content present)
-    const frame = document.getElementById('keyguard-frame');
-    if (frame) frame.addEventListener('load', ping); // cover the still-loading case
-});
+    document.body.appendChild(frame);
+}
 
 // ── Theme sync ──────────────────────────────────────────────────────────
 // Forwards the wallet's theme setting to the keyguard iframe so it matches.

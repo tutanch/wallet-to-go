@@ -19,6 +19,8 @@
     <title>Nimiq Keyguard</title>
     <link rel="icon" href="public/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="src/styles/keyguard.css">
+    <!-- Security hardening MUST load before any other keyguard script -->
+    <script src="src/keyguard-init.js"></script>
 </head>
 <body>
     <!-- All keyguard UI is rendered here by keyguard-app.js -->

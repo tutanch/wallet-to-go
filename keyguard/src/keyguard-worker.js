@@ -19,6 +19,29 @@ import {
     SerialBuffer,
 } from '../lib/nimiq-core/lib/web/index.mjs';
 
+// ── Worker-realm API hardening ─────────────────────────────────────
+// Freeze the crypto/storage/zeroing primitives so a tampered dynamic import
+// (e.g. keyguard-polygon.js) or any runtime code can't swap them to intercept
+// keys. Mirrors the document-side keyguard-init.js. Static imports above run
+// first under ESM, so this guards the dynamic-import and runtime paths; the
+// service-worker integrity manifest covers the static imports themselves.
+(function hardenWorkerRealm() {
+    'use strict';
+    try { if (self.crypto && self.crypto.subtle) Object.freeze(self.crypto.subtle); } catch (_) { /* non-critical */ }
+    try {
+        const _idb = self.indexedDB;
+        Object.defineProperty(self, 'indexedDB', { get: () => _idb, set: () => {}, configurable: false });
+    } catch (_) { /* non-critical */ }
+    try {
+        const origGetRandomValues = self.crypto.getRandomValues.bind(self.crypto);
+        Object.defineProperty(self.crypto, 'getRandomValues', { value: origGetRandomValues, writable: false, configurable: false });
+    } catch (_) { /* non-critical */ }
+    try {
+        const origFill = Uint8Array.prototype.fill;
+        Object.defineProperty(Uint8Array.prototype, 'fill', { value: origFill, writable: false, configurable: false });
+    } catch (_) { /* non-critical */ }
+})();
+
 // Base derivation path — address index is appended by getDerivationPath().
 // Full path: m/44'/242'/0'/{addressIndex}'
 const DERIVATION_BASE = "m/44'/242'/0'";

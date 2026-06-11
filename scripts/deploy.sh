@@ -97,7 +97,8 @@ find "$WORK/kg" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
 # Copy keyguard source
 cp -R "$ROOT/keyguard/"* "$WORK/kg/"
 
-# Replace [WALLET_ORIGIN] placeholder in all keyguard source files
+# Replace [WALLET_ORIGIN] / [WALLET_APP_URL] in the keyguard source (branch
+# model: push finished, substituted files; Pages serves them as-is).
 sed -i.bak "s|\[WALLET_ORIGIN\]|${WALLET_ORIGIN}|g" "$WORK/kg/index.html"
 sed -i.bak "s|\[WALLET_ORIGIN\]|${WALLET_ORIGIN}|g" "$WORK/kg/src/keyguard-app.js"
 sed -i.bak "s|\[WALLET_APP_URL\]|${WALLET_APP_URL}|g" "$WORK/kg/src/keyguard-app.js"
@@ -106,7 +107,37 @@ rm -f "$WORK/kg/index.html.bak" "$WORK/kg/src/keyguard-app.js.bak"
 # .nojekyll so GitHub Pages serves everything as-is
 touch "$WORK/kg/.nojekyll"
 
-# Commit and push
+# ── Wallet-side keyguard integrity manifest ───────────────────────────────
+# Hash the EXACT substituted bytes we are about to push, so the wallet can
+# cross-verify the live keyguard against them (src/modules/keyguard-verify.js).
+# Written into the WALLET repo; it is committed + pushed with the wallet and
+# then hash-pinned by the wallet's own service worker.
+echo "Generating keyguard integrity manifest..."
+MANIFEST="$ROOT/src/keyguard-manifest.js"
+( cd "$WORK/kg" && find . -type f -not -path './.git/*' -not -name '.nojekyll' \
+    | sed 's|^\./||' | LC_ALL=C sort ) > "$WORK/kg-files.txt"
+{
+    echo "// AUTO-GENERATED at deploy time by scripts/deploy.sh — do not edit by hand."
+    echo "// SHA-256 of every served keyguard file + an overall fingerprint digest."
+    echo "// Hash-pinned by the wallet service worker. See src/modules/keyguard-verify.js."
+    echo "export const KEYGUARD_MANIFEST = {"
+    echo "    files: {"
+} > "$MANIFEST"
+: > "$WORK/kg-digest.txt"
+while IFS= read -r rel; do
+    h="sha256-$(openssl dgst -sha256 -binary "$WORK/kg/$rel" | openssl base64)"
+    printf '        "%s": "%s",\n' "$rel" "$h" >> "$MANIFEST"
+    printf '%s %s\n' "$rel" "$h" >> "$WORK/kg-digest.txt"
+done < "$WORK/kg-files.txt"
+DIGEST="sha256-$(openssl dgst -sha256 -binary "$WORK/kg-digest.txt" | openssl base64)"
+{
+    echo "    },"
+    printf '    digest: "%s",\n' "$DIGEST"
+    echo "};"
+} >> "$MANIFEST"
+echo "Keyguard manifest: $(wc -l < "$WORK/kg-files.txt" | tr -d ' ') files, digest ${DIGEST}"
+
+# Commit and push the finished keyguard files (branch model)
 cd "$WORK/kg"
 git add -A
 if git diff --cached --quiet 2>/dev/null; then
@@ -119,15 +150,14 @@ else
 fi
 cd "$ROOT"
 
-# Enable GitHub Pages (branch deploy — .github.io repos auto-serve from main)
-gh api "repos/${ORG}/${KEYGUARD_REPO}/pages" \
-    -X POST --silent \
-    -f "source[branch]=main" -f "source[path]=/" 2>/dev/null || \
-gh api "repos/${ORG}/${KEYGUARD_REPO}/pages" \
-    -X PUT --silent \
-    -f "source[branch]=main" -f "source[path]=/" 2>/dev/null || true
+# Serve the keyguard repo from the main branch (revert any Actions-mode Pages
+# config from earlier deploys; harmless if already branch-served).
+gh api "repos/${ORG}/${KEYGUARD_REPO}/pages" -X PUT -f "build_type=legacy" -f "source[branch]=main" -f "source[path]=/" >/dev/null 2>&1 \
+  || gh api "repos/${ORG}/${KEYGUARD_REPO}/pages" -X POST -f "source[branch]=main" -f "source[path]=/" >/dev/null 2>&1 \
+  || true
 
 echo "Keyguard live at ${KEYGUARD_ORIGIN}"
+echo "Wallet src/keyguard-manifest.js updated — commit + push the wallet to apply."
 echo ""
 
 # ── Update wallet workflow ────────────────────────────────────────────────

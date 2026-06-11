@@ -517,7 +517,12 @@ export async function dashboardView() {
                 renderAssetRows();
             }
         } catch (e) {
-            console.warn('Stablecoin balance refresh failed:', e);
+            // Reached only if every RPC endpoint failed (the client rotates past
+            // a single flaky one). Log the underlying reason as a calm one-liner
+            // — never the raw ethers error, which is transaction-shaped and says
+            // "reverted" even though this is a read-only balanceOf poll.
+            const reason = e?.error?.reason || e?.reason || e?.code || 'network error';
+            console.warn(`Polygon balance refresh skipped (RPC unavailable: ${reason}).`);
             if (!polygonCache.balances) {
                 renderPolygonPrompt('error', 'Polygon network unavailable.');
             }

@@ -1,5 +1,6 @@
 import { navigate } from '../router.js';
 import { exportMnemonic, deleteWallet, getWebAuthnInfo, hasPassword, registerWebAuthn, removeWebAuthn, switchAccount, syncThemeToKeyguard, getPolygonAddress, activatePolygon } from '../modules/keyguard-api.js';
+import { keyguardFingerprint } from '../modules/keyguard-verify.js';
 import { getSelectedNetwork, setSelectedNetwork, NETWORKS, isStablecoinsEnabled } from '../config.js';
 import { disconnect } from '../modules/network-client.js';
 import { enableSwipeBack } from '../modules/gestures.js';
@@ -63,6 +64,12 @@ export function settingsView() {
                     <p class="nq-text error-text" id="switch-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>
 
+                <div class="settings-section" id="keyguard-fingerprint-section">
+                    <h2 class="nq-label">Keyguard fingerprint</h2>
+                    <p class="nq-text nq-text-s" style="margin-bottom: 8px;">Your wallet verifies the keyguard's code before every use and refuses to open it if it doesn't match. This is its fingerprint — compare it once against the value the developers publish (see VERIFICATION.md).</p>
+                    <code class="nq-text-s" id="keyguard-fingerprint" style="word-break: break-all; display: block; user-select: all;"></code>
+                </div>
+
                 <div class="settings-section">
                     <h2 class="nq-label">Backup</h2>
                     <p class="nq-text" style="margin-bottom: 12px;">The keyguard will ask for your password and display your recovery words securely.</p>
@@ -85,6 +92,9 @@ export function settingsView() {
 
     const faucetLink = el.querySelector('#faucet-link');
     if (faucetLink) faucetLink.href = NETWORKS.test.faucetUrl;
+
+    const fpEl = el.querySelector('#keyguard-fingerprint');
+    if (fpEl) fpEl.textContent = keyguardFingerprint() || 'Not yet deployed (dev mode — no integrity gate).';
 
     el.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 

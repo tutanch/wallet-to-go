@@ -1,6 +1,7 @@
 import { loadNimiq } from './nimiq.js';
 import { registerRoute, initRouter, navigate } from './router.js';
-import { hasKey, keyguardReady } from './modules/keyguard-api.js';
+import { hasKey, keyguardReady, createKeyguardFrame } from './modules/keyguard-api.js';
+import { verifyKeyguard, repinKeyguard } from './modules/keyguard-verify.js';
 import './modules/webauthn.js'; // Register WebAuthn delegation listener for keyguard iframe
 import { welcomeView } from './views/welcome-view.js';
 import { createView } from './views/create-view.js';
@@ -77,6 +78,40 @@ function showDisclaimer() {
     });
 }
 
+// Fail-closed screen shown when the keyguard integrity gate refuses to open the
+// keyguard. All dynamic text is set via textContent (no interpolation).
+function renderIntegrityAlarm(err) {
+    const app = document.getElementById('app');
+    const kind = err?.kind;
+    const title = (kind === 'tamper' || kind === 'pin-change') ? 'Security Warning' : 'Keyguard Unavailable';
+    const msg = kind === 'pin-change'
+        ? 'The keyguard’s code fingerprint has changed since you last used this wallet. This is expected after a legitimate update, but it can also mean the keyguard was tampered with. Do NOT enter your password or recovery words until you have compared the new fingerprint (Settings → Keyguard fingerprint) against the value published by the developers.'
+        : kind === 'tamper'
+            ? 'The keyguard’s code does not match what this wallet expects. To protect your keys, the wallet refused to open it. Do not proceed.'
+            : 'The wallet could not reach or verify the keyguard, so it will not open it. Check your connection and try again.';
+
+    app.innerHTML = `
+        <div class="nq-card">
+            <div class="nq-card-header">
+                <h1 class="nq-h1" id="kg-alarm-title"></h1>
+            </div>
+            <div class="nq-card-body">
+                <p class="nq-text error-text" id="kg-alarm-msg"></p>
+                <button class="nq-button" id="kg-alarm-retry" type="button">Retry</button>
+                <button class="nq-button" id="kg-alarm-accept" type="button" style="display:none; margin-top:12px; opacity:.8;">I verified the new fingerprint — accept</button>
+            </div>
+        </div>
+    `;
+    app.querySelector('#kg-alarm-title').textContent = title;
+    app.querySelector('#kg-alarm-msg').textContent = msg;
+    app.querySelector('#kg-alarm-retry').addEventListener('click', () => window.location.reload());
+    if (kind === 'pin-change') {
+        const accept = app.querySelector('#kg-alarm-accept');
+        accept.style.display = '';
+        accept.addEventListener('click', () => { repinKeyguard(); window.location.reload(); });
+    }
+}
+
 async function init() {
     try {
         // Apply stored theme preference before first render
@@ -88,8 +123,17 @@ async function init() {
         // Show disclaimer before anything else
         await showDisclaimer();
 
-        // Load Nimiq WASM and wait for keyguard iframe in parallel
-        await Promise.all([loadNimiq(), keyguardReady]);
+        // Start WASM load in parallel with the keyguard integrity gate.
+        const nimiqReady = loadNimiq();
+
+        // SECURITY GATE: cross-verify the keyguard's served code against the
+        // baked, hash-pinned manifest BEFORE attaching its iframe. Fails closed
+        // — a tampered, fingerprint-changed, or unreachable keyguard is never
+        // opened. No-op in local/dev mode (before the first deploy).
+        await verifyKeyguard();
+        createKeyguardFrame();
+
+        await Promise.all([nimiqReady, keyguardReady]);
 
         registerRoute('#welcome', () => welcomeView());
         registerRoute('#create', () => createView());
@@ -118,6 +162,10 @@ async function init() {
 
         initRouter();
     } catch (e) {
+        if (e?.name === 'KeyguardIntegrityError') {
+            renderIntegrityAlarm(e);
+            return;
+        }
         console.error('Failed to initialize Nimiq:', e);
         const app = document.getElementById('app');
         app.innerHTML = `

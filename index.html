@@ -18,7 +18,7 @@
         POLYGON.allowedRelayOrigins in src/config.js. Adding a relay or RPC =
         one line here + one line there.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-pJC4gS7fEJ2sD+197b4a+ot2JC9A5BR+IiRkBc7vMMk='; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: https://polygon-bor-rpc.publicnode.com https://gateway.tenderly.co https://polygon.api.onfinality.io https://polygon.drpc.org https://gsn.main.fastspot.io; worker-src 'self' blob:; frame-src [KEYGUARD_ORIGIN]; img-src 'self' data:; form-action 'self'; base-uri 'self'; object-src 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-pJC4gS7fEJ2sD+197b4a+ot2JC9A5BR+IiRkBc7vMMk='; style-src 'self' 'unsafe-inline'; connect-src 'self' [KEYGUARD_ORIGIN] wss: https://polygon-bor-rpc.publicnode.com https://gateway.tenderly.co https://polygon.api.onfinality.io https://polygon.drpc.org https://gsn.main.fastspot.io; worker-src 'self' blob:; frame-src [KEYGUARD_ORIGIN]; img-src 'self' data:; form-action 'self'; base-uri 'self'; object-src 'none'">
     <title>Nimiq Wallet</title>
     <link rel="icon" href="public/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="src/styles/app.css">
@@ -27,18 +27,13 @@
 </head>
 <body class="nq-blue-bg">
     <!--
-        Keyguard iframe — cross-origin, hidden by default.
-        Shown as full-screen overlay when user interaction is needed (signing, etc.).
-        sandbox: allow-same-origin lets keyguard access its own IndexedDB.
-        Replace [KEYGUARD_ORIGIN] before deploying.
+        Keyguard iframe is NOT static. It is created by JS (createKeyguardFrame
+        in src/modules/keyguard-api.js) only AFTER the wallet's integrity gate
+        (src/modules/keyguard-verify.js) has cross-verified the keyguard's
+        served code against the hash-pinned manifest. A tampered or unreachable
+        keyguard is therefore never attached. connect-src above allows the
+        verifier to fetch the keyguard origin.
     -->
-    <iframe
-        id="keyguard-frame"
-        src="[KEYGUARD_ORIGIN]"
-        style="display:none; position:fixed; inset:0; width:100%; height:100%; border:none; z-index:9999;"
-        sandbox="allow-scripts allow-same-origin allow-forms"
-        title="Nimiq Keyguard"
-    ></iframe>
     <div id="app">
         <div class="loading-screen">
             <h1 class="nq-h1">Loading Nimiq...</h1>

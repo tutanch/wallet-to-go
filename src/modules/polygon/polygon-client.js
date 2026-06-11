@@ -57,10 +57,20 @@ async function switchRpc() {
     contracts = null;
 }
 
-function isNetworkError(error) {
-    const code = error?.code;
-    return code === 'NETWORK_ERROR' || code === 'SERVER_ERROR' || code === 'TIMEOUT'
-        || error instanceof TypeError; // fetch() network failure
+function isNetworkError(error, depth = 0) {
+    if (!error || depth > 4) return false;
+    const code = error.code;
+    if (code === 'NETWORK_ERROR' || code === 'SERVER_ERROR' || code === 'TIMEOUT') return true;
+    if (error instanceof TypeError) return true; // fetch() network failure
+    // ethers v5 mislabels a transport failure on a read (no/garbled RPC
+    // response) as CALL_EXCEPTION with data="0x" and the real cause nested in
+    // error.error. A read like balanceOf cannot genuinely revert, so a
+    // data-less CALL_EXCEPTION wrapping a network error is a flaky endpoint to
+    // rotate past, NOT a real revert. (A genuine revert carries revert data.)
+    if (code === 'CALL_EXCEPTION' && (error.data === '0x' || error.data == null)) {
+        return isNetworkError(error.error, depth + 1);
+    }
+    return false;
 }
 
 /**
