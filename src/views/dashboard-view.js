@@ -3,6 +3,7 @@ import { getStoredAddress, getDerivedAddresses, getPolygonAddress, activatePolyg
 import * as network from '../modules/network-client.js';
 import { formatNim, formatToken, getSelectedNetwork, isStablecoinsEnabled, ASSETS, NETWORKS } from '../config.js';
 import { renderTxItem, renderTokenTxItem } from './history-view.js';
+import { assetLogo } from '../lib/asset-logos.js';
 import { showToast } from '../modules/toast.js';
 import { enablePullToRefresh } from '../modules/gestures.js';
 
@@ -345,8 +346,7 @@ export async function dashboardView() {
         const badge = document.createElement('span');
         badge.className = 'asset-badge';
         badge.setAttribute('aria-hidden', 'true');
-        badge.style.background = meta.color;
-        badge.textContent = meta.symbol;
+        badge.innerHTML = assetLogo(asset);
 
         const info = document.createElement('span');
         info.className = 'asset-info';

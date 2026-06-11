@@ -4,6 +4,7 @@ import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { formatNim, formatToken, isStablecoinsEnabled, ASSETS } from '../config.js';
 import { renderTxItem, renderSkeletonRows, mountTokenHistory } from './history-view.js';
+import { assetLogo } from '../lib/asset-logos.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
 
@@ -54,7 +55,7 @@ export async function assetView(asset) {
         <div class="nq-card">
             <div class="nq-card-header">
                 <div class="asset-hero">
-                    <span class="asset-badge" id="a-badge" aria-hidden="true">${meta.symbol}</span>
+                    <span class="asset-badge" id="a-badge" aria-hidden="true">${assetLogo(asset)}</span>
                     <h1 class="nq-h1" style="margin: 10px 0 0;">${meta.name}</h1>
                     <p class="nq-text-s">${meta.network}</p>
                 </div>
@@ -84,7 +85,6 @@ export async function assetView(asset) {
         </div>
     `;
 
-    el.querySelector('#a-badge').style.background = meta.color;
     el.querySelector('#a-address').textContent = displayAddress;
 
     let gone = false;
