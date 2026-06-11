@@ -1,6 +1,6 @@
 import { navigate } from '../router.js';
 import { getStoredAddress, getDerivedAddresses, getPolygonAddress } from '../modules/keyguard-api.js';
-import { getActiveAddressIndex } from './dashboard-view.js';
+import { getActiveAddressIndex, getCachedNimTxs } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
 import { formatNim, formatToken, isStablecoinsEnabled, ASSETS, getExplorerTxUrl } from '../config.js';
 import { showToast } from '../modules/toast.js';
@@ -9,7 +9,10 @@ import { enableSwipeBack } from '../modules/gestures.js';
 // Scan-window sizes mirrored from polygon-history.js (for honest scan info)
 const INITIAL_SCAN_DAYS = 1;
 const LOAD_OLDER_DAYS = 4.6;
-const AUTO_DEEPEN_PAGES = 5; // keep scanning ~24 days back when history is empty
+// One automatic extra window when the recent range is empty; deeper history is
+// manual via "Load older". Auto-deepening many windows (each a ~200k-block,
+// multi-chunk getLogs scan) is what previously flooded the public RPCs.
+const AUTO_DEEPEN_PAGES = 1;
 
 export async function historyView() {
     const defaultAddress = await getStoredAddress();
@@ -76,7 +79,16 @@ export async function historyView() {
         loadOlderBtn.style.display = 'none';
         scanInfo.style.display = 'none';
         txList.innerHTML = '';
-        txList.appendChild(renderSkeletonRows(4));
+
+        // Instant: reuse what the dashboard already loaded for this address, so
+        // the list isn't blank while the (slow) full history proof is fetched.
+        const cached = getCachedNimTxs(address);
+        if (cached.length) {
+            cached.forEach((tx) => txList.appendChild(renderTxItem(tx, address)));
+        } else {
+            txList.appendChild(renderSkeletonRows(4));
+        }
+
         try {
             const txs = await network.getHistory(address, 50);
             if (gone || activeAsset !== 'nim') return;
@@ -88,6 +100,9 @@ export async function historyView() {
             }
         } catch (e) {
             if (gone || activeAsset !== 'nim') return;
+            // Keep the cached rows if we have them — the overview data is still
+            // valid; only replace with an error when there's nothing to show.
+            if (cached.length) return;
             txList.innerHTML = '';
             const errorP = document.createElement('p');
             errorP.className = 'nq-text error-text';

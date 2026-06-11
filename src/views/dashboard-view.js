@@ -19,6 +19,12 @@ function setActiveAddressIndex(idx) {
 // ── Module-level cache (survives navigation) ────────────────────
 const cache = { balance: null, consensus: 'connecting', recentTxs: [], headHeight: 0, address: null, network: null };
 
+// Recent NIM txs already loaded for `forAddress` (for the history view to show
+// instantly instead of re-fetching the slow full history proof from scratch).
+export function getCachedNimTxs(forAddress) {
+    return cache.address === forAddress ? cache.recentTxs : [];
+}
+
 // Polygon/stablecoin cache — wallet-level (independent of the NIM address
 // picker). address: undefined = not queried yet, null = not activated.
 // tokenTxs feeds the unified activity stream on the dashboard.
