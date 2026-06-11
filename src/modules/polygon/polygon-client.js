@@ -32,13 +32,35 @@ export function getEthers() {
     return ethersPromise;
 }
 
+// ── Global request throttle ────────────────────────────────────────────────
+// Public keyless RPCs rate-limit hard (HTTP 429). Serialize every Polygon RPC
+// request through a shared minimum-interval gate so retries can never turn into
+// a request storm. ethers routes ALL calls through provider.send, so wrapping
+// it (below) is the single chokepoint covering getLogs, eth_call, getBlock, etc.
+const RPC_MIN_INTERVAL_MS = 150;
+let rpcGateChain = Promise.resolve();
+let lastRpcAt = 0;
+function rpcGate() {
+    const next = rpcGateChain.then(async () => {
+        const wait = RPC_MIN_INTERVAL_MS - (Date.now() - lastRpcAt);
+        if (wait > 0) await sleep(wait);
+        lastRpcAt = Date.now();
+    });
+    rpcGateChain = next.catch(() => {}); // never let the chain reject-forever
+    return next;
+}
+
 async function buildProvider() {
     const ethers = await getEthers();
     // StaticJsonRpcProvider skips repeated eth_chainId detection roundtrips
-    return new ethers.providers.StaticJsonRpcProvider(
+    const p = new ethers.providers.StaticJsonRpcProvider(
         POLYGON.rpcUrls[rpcIndex],
         { name: 'matic', chainId: POLYGON.chainId },
     );
+    // Throttle every request through the shared gate (see above).
+    const send = p.send.bind(p);
+    p.send = async (method, params) => { await rpcGate(); return send(method, params); };
+    return p;
 }
 
 export async function getProvider() {
@@ -135,6 +157,20 @@ function sleep(ms) {
     return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
+function isRateLimited(error) {
+    const status = error?.status ?? error?.error?.status ?? error?.error?.error?.status;
+    if (status === 429) return true;
+    const msg = `${error?.message || ''} ${error?.error?.message || ''} ${error?.body || ''}`;
+    return /\b429\b|too many requests|rate.?limit/i.test(msg);
+}
+
+// Only a genuine result-set/range-cap error should shrink the window. A 429
+// must NOT (shrinking makes more requests and amplifies the rate-limit).
+function isRangeTooLarge(error) {
+    const msg = `${error?.message || ''} ${error?.error?.message || ''}`;
+    return /more than .*results|block range|range is too|query returned more than|response size|limit exceeded|exceed(s|ed)? maximum/i.test(msg);
+}
+
 /**
  * queryFilter over an arbitrary block range, chunked to the public RPC cap.
  * Per chunk, every endpoint is tried (public RPCs rate-limit getLogs
@@ -150,6 +186,7 @@ export async function safeGetLogs(contractName, makeFilter, fromBlock, toBlock) 
     const allEvents = [];
     let currentRange = Math.min(POLYGON.rpcMaxBlockRange, Math.max(toBlock - fromBlock, 1));
     let currentStart = fromBlock;
+    let backoffs = 0;
 
     while (currentStart <= toBlock) {
         const currentEnd = Math.min(currentStart + currentRange, toBlock);
@@ -168,20 +205,32 @@ export async function safeGetLogs(contractName, makeFilter, fromBlock, toBlock) 
                 // Client-side errors (bad filter args etc.) — no retry helps
                 if (error?.code === 'INVALID_ARGUMENT') throw error;
                 endpointTries += 1;
+                // Try the next endpoint first (the global throttle spaces these).
                 if (endpointTries < POLYGON.rpcUrls.length) {
-                    // Same window on the next endpoint first
                     await switchRpc(); // eslint-disable-line no-await-in-loop
                     continue;
                 }
-                if (currentRange <= NO_LOG_LIMIT_BLOCK_RANGE) {
-                    console.error('safeGetLogs failed within the no-limit range, giving up.', currentStart, currentEnd, error);
-                    throw error;
-                }
-                currentRange = Math.floor(currentRange / 2);
                 endpointTries = 0;
-                console.warn(`safeGetLogs: halving range to ${currentRange} blocks`, error?.message || error);
-                await sleep(300); // eslint-disable-line no-await-in-loop
-                break; // recompute currentEnd with the smaller range
+                // Genuine "range too large" — shrink the window and retry.
+                if (isRangeTooLarge(error) && currentRange > NO_LOG_LIMIT_BLOCK_RANGE) {
+                    currentRange = Math.floor(currentRange / 2);
+                    console.warn(`safeGetLogs: halving range to ${currentRange} blocks`, error?.message || error);
+                    await sleep(300); // eslint-disable-line no-await-in-loop
+                    break; // recompute currentEnd with the smaller range
+                }
+                // Rate-limited / transient across all endpoints: back off and
+                // retry the SAME window (exponential, capped). Shrinking here
+                // would make MORE requests and amplify the 429s. History is
+                // non-critical, so give up after a few rounds rather than hammer.
+                if (backoffs < 5 && (isRateLimited(error) || error?.code === 'SERVER_ERROR' || error?.code === 'TIMEOUT')) {
+                    const delay = Math.min(1000 * 2 ** backoffs, 15000);
+                    backoffs += 1;
+                    console.warn(`safeGetLogs: backing off ${delay}ms (rate-limited / transient)`);
+                    await sleep(delay); // eslint-disable-line no-await-in-loop
+                    break; // retry the same window after the backoff
+                }
+                console.error('safeGetLogs: giving up.', currentStart, currentEnd, error?.message || error);
+                throw error;
             }
         }
     }

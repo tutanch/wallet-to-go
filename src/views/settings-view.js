@@ -66,7 +66,7 @@ export function settingsView() {
 
                 <div class="settings-section" id="keyguard-fingerprint-section">
                     <h2 class="nq-label">Keyguard fingerprint</h2>
-                    <p class="nq-text nq-text-s" style="margin-bottom: 8px;">Your wallet verifies the keyguard's code before every use and refuses to open it if it doesn't match. This is its fingerprint — compare it once against the value the developers publish (see VERIFICATION.md).</p>
+                    <p class="nq-text nq-text-s" style="margin-bottom: 8px;">Your wallet verifies the keyguard's code before every use and refuses to open it if it doesn't match. This is its fingerprint — to be extra safe, compare it once against the value committed in the project's source (src/keyguard-manifest.js) on GitHub.</p>
                     <code class="nq-text-s" id="keyguard-fingerprint" style="word-break: break-all; display: block; user-select: all;"></code>
                 </div>
 
