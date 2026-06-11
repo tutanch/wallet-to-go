@@ -282,19 +282,16 @@ export async function dashboardView() {
         // Show immediately without balances
         buildPickerRows(null);
 
-        // Then fetch balances and re-render
-        setTimeout(() => document.addEventListener('click', onOutsideClick, true), 0);
+        // Registered synchronously so "listener registered ⟺ pickerOpen"
+        // holds strictly. Safe: the opening click's capture phase over the
+        // document has already passed, and onOutsideClick ignores the button.
+        document.addEventListener('click', onOutsideClick, true);
 
+        // Then fetch balances and re-render
         try {
             const hasConsensus = await network.isConsensusEstablished();
             if (hasConsensus) {
-                const client = await network.getClient();
-                const addrs = allAddresses.map(a => a.address);
-                const accounts = await client.getAccounts(addrs);
-                const balances = {};
-                for (let i = 0; i < addrs.length; i++) {
-                    balances[addrs[i]] = accounts[i] ? Number(accounts[i].balance) : 0;
-                }
+                const balances = await network.getBalances(allAddresses.map(a => a.address));
                 if (pickerOpen) buildPickerRows(balances);
             }
         } catch (_) {}
@@ -623,7 +620,9 @@ export async function dashboardView() {
     return {
         element: el,
         cleanup: () => {
-            viewUpdate = null;
+            // Ownership check: a superseded instance's cleanup must not null
+            // out the viewUpdate a newer dashboard has already installed.
+            if (viewUpdate === update) viewUpdate = null;
             assetsGone = true;
             closePicker();
             cleanupPull();

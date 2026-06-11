@@ -27,6 +27,14 @@ function getCurrentRoute() {
     return window.location.hash || '#welcome';
 }
 
+// A superseded navigation discards its freshly built view without ever
+// mounting it — run its cleanup so timers/listeners don't leak.
+function runOrphanCleanup(result) {
+    if (result && !(result instanceof HTMLElement) && result.cleanup) {
+        result.cleanup();
+    }
+}
+
 async function handleHashChange() {
     const thisNavId = ++navigationId;
     const hash = getCurrentRoute();
@@ -57,14 +65,14 @@ async function handleHashChange() {
 
     // Build the new view while the old one is still visible
     const result = await factory();
-    if (thisNavId !== navigationId) return;
+    if (thisNavId !== navigationId) { runOrphanCleanup(result); return; }
 
     // Fade out old view
     const oldView = $app.firstElementChild;
     if (oldView) {
         oldView.classList.add('view-exit');
         await new Promise(r => setTimeout(r, 120));
-        if (thisNavId !== navigationId) return;
+        if (thisNavId !== navigationId) { runOrphanCleanup(result); return; }
     }
 
     if (currentCleanup) {

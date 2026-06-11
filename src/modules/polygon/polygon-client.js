@@ -109,11 +109,15 @@ export async function getBlockNumber() {
  * Values fit safely in a JS Number (up to ~9e9 tokens).
  */
 export async function getStablecoinBalances(address) {
-    const { usdcToken, usdtToken } = await getContracts();
-    const [usdc, usdt] = await withRpcFallback(() => Promise.all([
-        usdcToken.balanceOf(address),
-        usdtToken.balanceOf(address),
-    ]));
+    // Contracts resolved per attempt — instances captured before the retry
+    // loop would stay bound to the failed provider after an RPC switch.
+    const [usdc, usdt] = await withRpcFallback(async () => {
+        const { usdcToken, usdtToken } = await getContracts();
+        return Promise.all([
+            usdcToken.balanceOf(address),
+            usdtToken.balanceOf(address),
+        ]);
+    });
     return { usdc: usdc.toNumber(), usdt: usdt.toNumber() };
 }
 
