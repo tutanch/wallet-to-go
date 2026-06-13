@@ -1,0 +1,19 @@
+# Dependabot configuration.
+#
+# This is a no-build, vendored-dependency repo: there is no package.json /
+# lockfile, and the vendored libraries (lib/ethers, lib/nimiq-core) are not
+# tracked by any package manager, so they are invisible to Dependabot. The only
+# updatable dependencies are the GitHub Actions used by the deploy workflow.
+#
+# IMPORTANT: .github/workflows/deploy.yml is regenerated from the heredoc in
+# scripts/deploy.sh. When you merge an action bump from Dependabot, also update
+# the matching `uses:` line in that heredoc, or the next deploy.sh run reverts it.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]

@@ -164,6 +164,11 @@ echo ""
 echo "--- Wallet ---"
 
 mkdir -p "$ROOT/.github/workflows"
+# NOTE: the `uses: actions/...@vN` pins in the heredoc below are the SOURCE OF
+# TRUTH for the deploy workflow. Dependabot (.github/dependabot.yml) opens PRs
+# that bump these in the generated .github/workflows/deploy.yml, but the next
+# run of this script REGENERATES that file and reverts the bump — so when you
+# merge a Dependabot action update, mirror the new version into the heredoc here.
 cat > "$ROOT/.github/workflows/deploy.yml" << WORKFLOW_EOF
 name: Deploy to GitHub Pages
 

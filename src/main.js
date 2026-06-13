@@ -3,18 +3,12 @@ import { registerRoute, initRouter, navigate } from './router.js';
 import { hasKey, keyguardReady, createKeyguardFrame } from './modules/keyguard-api.js';
 import { verifyKeyguard, repinKeyguard } from './modules/keyguard-verify.js';
 import './modules/webauthn.js'; // Register WebAuthn delegation listener for keyguard iframe
+// welcome + lock are the only first-paint screens, so they're imported eagerly.
+// Every other view is loaded lazily at navigation time (see the registerRoute
+// calls below) so its module subgraph (e.g. network-client) stays off the
+// startup path.
 import { welcomeView } from './views/welcome-view.js';
-import { createView } from './views/create-view.js';
-import { importView } from './views/import-view.js';
-import { dashboardView } from './views/dashboard-view.js';
-import { sendView } from './views/send-view.js';
-import { receiveView } from './views/receive-view.js';
-import { historyView } from './views/history-view.js';
-import { settingsView } from './views/settings-view.js';
 import { lockView } from './views/lock-view.js';
-import { batchSendView } from './views/batch-send-view.js';
-import { cashlinksView } from './views/cashlinks-view.js';
-import { assetView } from './views/asset-view.js';
 
 // Register service worker for integrity-pinned caching.
 // Non-blocking — does not delay app startup.
@@ -123,8 +117,12 @@ async function init() {
         // Show disclaimer before anything else
         await showDisclaimer();
 
-        // Start WASM load in parallel with the keyguard integrity gate.
-        const nimiqReady = loadNimiq();
+        // Warm up the Nimiq WASM (~8.7 MB) in the background. It's only needed
+        // for network operations (dashboard balance, send, history) — never for
+        // the first paint — and every consumer awaits loadNimiq() at its own
+        // point of use, so a load failure surfaces there (not as a fatal init
+        // error). Keeping it off the critical path is the main startup win.
+        loadNimiq().catch(() => {});
 
         // SECURITY GATE: cross-verify the keyguard's served code against the
         // baked, hash-pinned manifest BEFORE attaching its iframe. Fails closed
@@ -133,22 +131,28 @@ async function init() {
         await verifyKeyguard();
         createKeyguardFrame();
 
-        await Promise.all([nimiqReady, keyguardReady]);
+        // First paint waits only on the keyguard (needed for hasKey() routing),
+        // not on WASM.
+        await keyguardReady;
 
+        // welcome + lock render synchronously (eager imports above). Every other
+        // view is fetched on first navigation so its module subgraph stays off
+        // the startup path; the router awaits the factory promise (router.js).
         registerRoute('#welcome', () => welcomeView());
-        registerRoute('#create', () => createView());
-        registerRoute('#import', () => importView());
-        registerRoute('#dashboard', () => dashboardView());
-        registerRoute('#send', () => sendView());
-        registerRoute('#receive', () => receiveView());
-        registerRoute('#history', () => historyView());
-        registerRoute('#settings', () => settingsView());
         registerRoute('#lock', () => lockView());
-        registerRoute('#batch-send', () => batchSendView());
-        registerRoute('#cashlinks', () => cashlinksView());
-        registerRoute('#asset-nim', () => assetView('nim'));
-        registerRoute('#asset-usdc', () => assetView('usdc'));
-        registerRoute('#asset-usdt', () => assetView('usdt'));
+        registerRoute('#create', () => import('./views/create-view.js').then(m => m.createView()));
+        registerRoute('#import', () => import('./views/import-view.js').then(m => m.importView()));
+        registerRoute('#dashboard', () => import('./views/dashboard-view.js').then(m => m.dashboardView()));
+        registerRoute('#send', () => import('./views/send-view.js').then(m => m.sendView()));
+        registerRoute('#receive', () => import('./views/receive-view.js').then(m => m.receiveView()));
+        registerRoute('#history', () => import('./views/history-view.js').then(m => m.historyView()));
+        registerRoute('#settings', () => import('./views/settings-view.js').then(m => m.settingsView()));
+        registerRoute('#batch-send', () => import('./views/batch-send-view.js').then(m => m.batchSendView()));
+        registerRoute('#cashlinks', () => import('./views/cashlinks-view.js').then(m => m.cashlinksView()));
+        // asset-view is one module serving three routes — dynamic import dedupes/caches it.
+        registerRoute('#asset-nim', () => import('./views/asset-view.js').then(m => m.assetView('nim')));
+        registerRoute('#asset-usdc', () => import('./views/asset-view.js').then(m => m.assetView('usdc')));
+        registerRoute('#asset-usdt', () => import('./views/asset-view.js').then(m => m.assetView('usdt')));
 
         // If wallet exists, go to dashboard (or lock screen); otherwise show welcome
         const walletExists = await hasKey();
