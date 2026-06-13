@@ -103,7 +103,9 @@ function showUI() {
 }
 
 function hideUI() {
-    document.getElementById('keyguard-ui').style.display = 'none';
+    const kg = document.getElementById('keyguard-ui');
+    kg.style.display = 'none';
+    kg.innerHTML = ''; // reset so the next session fades the backdrop in afresh
     sendToWallet({ type: 'hide' });
 }
 
@@ -111,7 +113,9 @@ function resolveSession(result, transfer = []) {
     if (!currentSession) return;
     const { source, origin, sessionId } = currentSession;
     currentSession = null;
-    document.getElementById('keyguard-ui').style.display = 'none';
+    const kg = document.getElementById('keyguard-ui');
+    kg.style.display = 'none';
+    kg.innerHTML = ''; // reset so the next session fades the backdrop in afresh
     source.postMessage({ type: 'hide' }, origin);   // hide the iframe in the wallet
     source.postMessage({ type: 'result', sessionId, result }, origin, transfer);
 }
@@ -120,7 +124,9 @@ function rejectSession(errorMsg) {
     if (!currentSession) return;
     const { source, origin, sessionId } = currentSession;
     currentSession = null;
-    document.getElementById('keyguard-ui').style.display = 'none';
+    const kg = document.getElementById('keyguard-ui');
+    kg.style.display = 'none';
+    kg.innerHTML = ''; // reset so the next session fades the backdrop in afresh
     source.postMessage({ type: 'hide' }, origin);   // hide the iframe in the wallet
     source.postMessage({ type: 'error', sessionId, error: errorMsg }, origin);
 }
@@ -235,7 +241,7 @@ function renderMnemonicGridEnhanced(words, { title, subtitle, countdownSeconds }
                 </div>
                 <div class="keyguard-footer">
                     <button id="btn-cancel" type="button" class="btn-secondary">Cancel</button>
-                    <button id="btn-confirm" type="button" class="btn-primary" disabled>
+                    <button id="btn-confirm" type="button" class="btn-primary btn-countdown" disabled>
                         Wait <span id="countdown">${countdownSeconds}</span>s
                     </button>
                 </div>
@@ -690,8 +696,42 @@ function renderBiometricAuth(title, subtitle, showPassword) {
 const ui = document.getElementById('keyguard-ui');
 
 function setUI(html) {
+    // Measure the outgoing card so we can morph height between screens (FLIP).
+    const prevCard = ui.querySelector('.keyguard-card');
+    const prevHeight = prevCard ? prevCard.offsetHeight : 0;
+
     ui.innerHTML = html;
     if (!html) return;
+
+    const newContainer = ui.querySelector('.keyguard-container');
+    const newCard = ui.querySelector('.keyguard-card');
+
+    // Within a session, internal screen changes must not replay the backdrop
+    // fade — only the first screen (no previous card) fades the overlay in.
+    if (prevCard && newContainer) newContainer.classList.add('kg-no-fade');
+
+    if (newCard) {
+        newCard.classList.add('kg-screen-swap'); // per-screen content fade
+        const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prevHeight && !reduceMotion) {
+            const newHeight = newCard.offsetHeight; // natural height of the new screen
+            if (Math.abs(newHeight - prevHeight) > 2) {
+                newCard.style.height = prevHeight + 'px';
+                void newCard.offsetHeight;          // commit the pin before transitioning
+                newCard.classList.add('kg-h-anim');
+                newCard.style.height = newHeight + 'px';
+                const cleanup = () => {
+                    newCard.style.height = '';
+                    newCard.classList.remove('kg-h-anim');
+                    newCard.removeEventListener('transitionend', onEnd);
+                };
+                const onEnd = (e) => { if (e.propertyName === 'height') cleanup(); };
+                newCard.addEventListener('transitionend', onEnd);
+                setTimeout(cleanup, 400); // fallback if transitionend never fires
+            }
+        }
+    }
+
     // Move focus into the freshly rendered overlay so keyboard/screen-reader
     // users land on the relevant control instead of the document root.
     const target = ui.querySelector('[data-autofocus]')
@@ -931,8 +971,9 @@ async function flowCreateWallet() {
                 userId, nextPasskeyName(), RESTORE_PRF_SALT,
             );
 
-            // Clear the passkey registration screen before async worker call
-            setUI('');
+            // Show progress during the async worker derivation (keeps the
+            // overlay up instead of blanking it).
+            setUI(renderLoadingCard('Preparing Your Wallet'));
 
             // Derive wallet deterministically from PRF output + account index
             const walletData = await callWorker('createWalletFromPrf', {
@@ -970,7 +1011,6 @@ async function flowImportWallet() {
 
         // Keep a copy of words for later steps
         const wordsCopy = words.slice();
-        setUI('');
 
         // Passkey is mandatory for import
         setUI(renderWebAuthnPrompt());
@@ -994,8 +1034,9 @@ async function flowImportWallet() {
                     userId, nextPasskeyName(), prfSalt,
                 );
 
-                // Clear the passkey registration screen before async worker call
-                setUI('');
+                // Show progress during the async worker import (keeps the
+                // overlay up instead of blanking it).
+                setUI(renderLoadingCard('Importing Wallet'));
 
                 // Import wallet with passkey only (no password)
                 const result = await callWorker('importWallet', {
@@ -1085,7 +1126,6 @@ async function flowSignTransaction(args) {
         }));
 
         ui.querySelector('#btn-confirm').onclick = () => {
-            setUI('');
             showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
         };
     }
@@ -1120,7 +1160,6 @@ function wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRe
 
     if (passwordSet) {
         ui.querySelector('#btn-password').onclick = () => {
-            setUI('');
             showPasswordFormForSign(args, formattedAmount, truncatedRecipient);
         };
     }
@@ -1131,7 +1170,7 @@ function wireBiometricSign(info, passwordSet, args, formattedAmount, truncatedRe
 // decodePolygonCalldata result — i.e. the values that will actually be
 // signed — never from wallet-supplied display strings.
 
-function renderPolygonLoading(text) {
+function renderLoadingCard(text) {
     return `
         <div class="keyguard-container">
             <div class="keyguard-card">
@@ -1228,7 +1267,7 @@ function showPasswordFormForPolygonSign(args, decoded) {
 async function flowSignPolygonTransaction(args) {
     showUI();
     // The worker loads ethers (~550 KB) on first use — show progress meanwhile
-    setUI(renderPolygonLoading('Preparing Transaction'));
+    setUI(renderLoadingCard('Preparing Transaction'));
 
     // Decode + validate in the worker; render ONLY from this result
     let decoded;
@@ -1273,14 +1312,12 @@ async function flowSignPolygonTransaction(args) {
 
         if (passwordSet) {
             ui.querySelector('#btn-password').onclick = () => {
-                setUI('');
                 showPasswordFormForPolygonSign(args, decoded);
             };
         }
     } else {
         setUI(renderPolygonTxConfirm({ decoded }));
         ui.querySelector('#btn-confirm').onclick = () => {
-            setUI('');
             showPasswordFormForPolygonSign(args, decoded);
         };
     }
@@ -1427,7 +1464,6 @@ async function flowSignBatchTransaction(args) {
         }));
 
         ui.querySelector('#btn-confirm').onclick = () => {
-            setUI('');
             showPasswordFormForBatchSign(args, subtitle);
         };
     }
@@ -1465,7 +1501,6 @@ function wireBiometricBatchSign(info, passwordSet, args, subtitle) {
 
     if (passwordSet) {
         ui.querySelector('#btn-password').onclick = () => {
-            setUI('');
             showPasswordFormForBatchSign(args, subtitle);
         };
     }
@@ -1564,7 +1599,6 @@ function showPasswordFormForExport() {
         try {
             const { words } = await callWorker('exportMnemonic', { password: pw });
             ui.querySelector('#password').value = '';
-            setUI('');
             showExportedWords(words);
         } catch (err) {
             ui.querySelector('#password').value = '';
@@ -1601,7 +1635,6 @@ async function flowExportMnemonic() {
                     prfKey: Array.from(prfKey),
                 });
                 prfKey.fill(0);
-                setUI('');
                 showExportedWords(words);
             } catch (err) {
                 biometricBtn.disabled = false;
@@ -1615,7 +1648,6 @@ async function flowExportMnemonic() {
 
         if (passwordSet) {
             ui.querySelector('#btn-password').onclick = () => {
-                setUI('');
                 showPasswordFormForExport();
             };
         }
@@ -1747,13 +1779,17 @@ const RESTORE_PRF_SALT = new Uint8Array([
 function renderAccountPicker(addresses, balances = {}) {
     const rows = addresses.map(({ index, address }) => {
         const bal = balances[address];
-        const balText = bal !== undefined ? formatLuna(bal) : '';
+        // Always render the balance line (skeleton chip until known) so rows
+        // keep their height from the moment the picker appears.
+        const balContent = bal !== undefined
+            ? escHtml(formatLuna(bal))
+            : '<span class="kg-skeleton" aria-hidden="true" style="--w:9ch;"></span>';
         return `
         <button type="button" class="account-row" data-index="${index}">
             <span class="account-index">#${index + 1}</span>
             <span class="account-details">
                 <span class="account-address">${escHtml(address)}</span>
-                ${balText ? `<span class="account-balance">${escHtml(balText)}</span>` : ''}
+                <span class="account-balance">${balContent}</span>
             </span>
         </button>`;
     }).join('');
@@ -1796,15 +1832,20 @@ async function showAccountPickerFlow({ prfKey, credentialId, allowOverwrite, err
     // balances fill in when ready).
     const addrList = addresses.map(a => a.address);
 
-    // Show picker immediately (without balances)
+    // Show picker immediately (balances render as skeleton chips)
     setUI(renderAccountPicker(addresses));
     attachPickerHandlers({ addresses, prfKey, credentialId, allowOverwrite });
 
-    // Then fetch balances and re-render with them
+    // Then fetch balances and fill them into the existing rows in place — no
+    // re-render, so focus and the click handlers survive.
     const balances = await requestBalancesFromWallet(addrList);
     if (Object.keys(balances).length > 0) {
-        setUI(renderAccountPicker(addresses, balances));
-        attachPickerHandlers({ addresses, prfKey, credentialId, allowOverwrite });
+        addresses.forEach(({ index, address }) => {
+            if (balances[address] === undefined) return;
+            const row = ui.querySelector(`.account-row[data-index="${index}"]`);
+            const balEl = row && row.querySelector('.account-balance');
+            if (balEl) balEl.textContent = formatLuna(balances[address]);
+        });
     }
 }
 
@@ -2089,7 +2130,6 @@ async function flowCashlinkCrypto(args, workerCommand, title) {
 
         if (passwordSet) {
             ui.querySelector('#btn-password').onclick = () => {
-                setUI('');
                 showPasswordFormForCashlinkCrypto(args, workerCommand, title);
             };
         }

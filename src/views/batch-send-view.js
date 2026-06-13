@@ -5,6 +5,7 @@ import * as network from '../modules/network-client.js';
 import { nimToLuna, lunaToNim, formatNim, getNetworkConfig } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+import { skeletonText, settleText } from '../modules/ui.js';
 
 export async function batchSendView() {
     const defaultAddress = await getStoredAddress();
@@ -196,7 +197,7 @@ export async function batchSendView() {
                             <div class="lbl">Total Cost</div>
                         </div>
                         <div class="batch-summary-item">
-                            <div class="num" id="s-balance">...</div>
+                            <div class="num" id="s-balance"></div>
                             <div class="lbl">Balance</div>
                         </div>
                     </div>
@@ -293,12 +294,13 @@ export async function batchSendView() {
         });
 
         // Fetch balance
+        skeletonText($balance, 6);
         network.getBalance(address).then(balance => {
             fetchedBalance = balance;
-            $balance.textContent = formatNim(balance);
+            settleText($balance, formatNim(balance));
             updateSummary();
         }).catch(() => {
-            $balance.textContent = '?';
+            settleText($balance, '?');
         });
 
         el.querySelector('#btn-edit').addEventListener('click', () => navigate('#batch-send'));
@@ -398,7 +400,9 @@ export async function batchSendView() {
             // Show result
             footer.innerHTML = '';
             const btnDone = document.createElement('button');
-            btnDone.className = 'nq-button-s';
+            // Full-size (matches the Stop button it replaces) so the footer
+            // height doesn't shrink at the finale.
+            btnDone.className = 'nq-button light-blue';
             btnDone.textContent = 'Done';
             btnDone.addEventListener('click', () => navigate('#asset-nim'));
             footer.appendChild(btnDone);

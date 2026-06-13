@@ -5,6 +5,7 @@ import { getSelectedNetwork, setSelectedNetwork, NETWORKS, isStablecoinsEnabled 
 import { disconnect } from '../modules/network-client.js';
 import { enableSwipeBack } from '../modules/gestures.js';
 import { resetPolygonCache } from './dashboard-view.js';
+import { skeletonText, settleText } from '../modules/ui.js';
 
 export function settingsView() {
     const el = document.createElement('div');
@@ -45,14 +46,14 @@ export function settingsView() {
                 ${isStablecoinsEnabled() ? `
                 <div class="settings-section" id="polygon-section">
                     <h2 class="nq-label">Stablecoins (Polygon)</h2>
-                    <p class="nq-text" style="margin-bottom: 12px;" id="polygon-status" aria-live="polite">Checking…</p>
+                    <p class="nq-text" style="margin-bottom: 12px;" id="polygon-status" aria-live="polite"></p>
                     <button class="nq-button-s" id="btn-polygon-activate" style="display: none;">Activate Polygon</button>
                     <p class="nq-text error-text" id="polygon-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>` : ''}
 
                 <div class="settings-section" id="security-section">
                     <h2 class="nq-label">Security</h2>
-                    <p class="nq-text" style="margin-bottom: 12px;" id="webauthn-status" aria-live="polite">Checking biometric support...</p>
+                    <p class="nq-text" style="margin-bottom: 12px;" id="webauthn-status" aria-live="polite"></p>
                     <button class="nq-button-s" id="btn-webauthn" style="display: none;"></button>
                     <p class="nq-text error-text" id="webauthn-error" role="alert" style="display: none; margin-top: 8px;"></p>
                 </div>
@@ -193,17 +194,18 @@ export function settingsView() {
         const activateBtn = polygonSection.querySelector('#btn-polygon-activate');
         const errorEl = polygonSection.querySelector('#polygon-error');
 
+        skeletonText(statusEl, 22);
         (async () => {
             try {
                 const { address } = await getPolygonAddress();
                 if (address) {
-                    statusEl.textContent = `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`;
+                    settleText(statusEl, `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`);
                 } else {
-                    statusEl.textContent = 'Activate to send and receive USDC/USDT with fees paid in the token itself.';
+                    settleText(statusEl, 'Activate to send and receive USDC/USDT with fees paid in the token itself.');
                     activateBtn.style.display = '';
                 }
             } catch (_) {
-                statusEl.textContent = 'Status unavailable.';
+                settleText(statusEl, 'Status unavailable.');
             }
         })();
 
@@ -215,7 +217,7 @@ export function settingsView() {
             try {
                 const { address } = await activatePolygon();
                 resetPolygonCache();
-                statusEl.textContent = `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`;
+                settleText(statusEl, `Active — ${address.substring(0, 10)}…${address.substring(address.length - 8)}`);
                 activateBtn.style.display = 'none';
                 activateBtn.removeAttribute('aria-busy');
             } catch (e) {
@@ -247,8 +249,13 @@ export function settingsView() {
             const info = await getWebAuthnInfo();
             const hasPw = await hasPassword();
 
+            // Switch-account is only meaningful for passkey (WebAuthn) wallets;
+            // set it here so there's no second keyguard round-trip / delayed pop.
+            const switchSection = el.querySelector('#switch-section');
+            if (switchSection) switchSection.style.display = info.hasWebAuthn ? '' : 'none';
+
             if (info.hasWebAuthn) {
-                webauthnStatus.textContent = 'Biometric unlock is enabled.';
+                settleText(webauthnStatus, 'Biometric unlock is enabled.');
                 if (hasPw) {
                     webauthnBtn.textContent = 'Disable Biometric Unlock';
                     webauthnBtn.style.display = '';
@@ -258,7 +265,7 @@ export function settingsView() {
                     webauthnBtn.style.display = 'none';
                 }
             } else {
-                webauthnStatus.textContent = 'Use your fingerprint, face, or device PIN instead of typing your password.';
+                settleText(webauthnStatus, 'Use your fingerprint, face, or device PIN instead of typing your password.');
                 webauthnBtn.textContent = 'Enable Biometric Unlock';
                 webauthnBtn.style.display = '';
                 webauthnBtn.disabled = false;
@@ -269,15 +276,8 @@ export function settingsView() {
         }
     }
 
-    updateWebAuthnUI().then(async () => {
-        // Show "Switch Account" section if the wallet has a passkey
-        try {
-            const info = await getWebAuthnInfo();
-            if (info.hasWebAuthn) {
-                el.querySelector('#switch-section').style.display = '';
-            }
-        } catch (_) {}
-    });
+    skeletonText(webauthnStatus, 24);
+    updateWebAuthnUI();
 
     // Switch Account
     el.querySelector('#btn-switch').addEventListener('click', async () => {

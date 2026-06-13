@@ -68,6 +68,10 @@
     --radius-m: 16px;
     --t-fast: 100ms;
     --t-base: 160ms;
+    --t-slow: 240ms;
+    --ease-out:    cubic-bezier(0.22, 0.61, 0.36, 1);
+    --ease-in:     cubic-bezier(0.55, 0.06, 0.68, 0.19);
+    --ease-in-out: cubic-bezier(0.45, 0.05, 0.55, 0.95);
 
     /* Safe areas */
     --safe-top: env(safe-area-inset-top, 0px);
@@ -159,12 +163,56 @@ body {
     to { opacity: 1; }
 }
 
+/* ---- Screen transitions (setUI FLIP) ---- */
+/* Internal screen changes must not replay the backdrop fade — only the first
+   screen of a session fades the overlay in. */
+.keyguard-container.kg-no-fade {
+    animation: none;
+}
+
+/* Smoothly morph the card height between screens of differing size. JS pins the
+   previous height, adds this class, then sets the new height. */
+.kg-h-anim {
+    transition: height var(--t-slow) var(--ease-in-out);
+    overflow: hidden;
+}
+
+/* Content fade for each freshly rendered screen. */
+.kg-screen-swap > * {
+    animation: kgScreenIn var(--t-base) var(--ease-out) both;
+}
+
+@keyframes kgScreenIn {
+    from { opacity: 0; }
+}
+
+/* Inline width-stable placeholder (account-picker balances). */
+.kg-skeleton {
+    display: inline-block;
+    width: var(--w, 6ch);
+    height: 0.85em;
+    border-radius: 4px;
+    background: var(--fill-hover);
+    animation: kgShimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes kgShimmer {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+/* Countdown digits don't wobble the surrounding text. */
+#countdown {
+    font-variant-numeric: tabular-nums;
+}
+
 /* ---- Card ---- */
 .keyguard-card {
     background: var(--surface);
     border-radius: var(--radius-m);
     width: 100%;
     max-width: 420px;
+    min-height: 240px; /* floor so the loading/short screens don't collapse */
     max-height: 90vh;
     max-height: 90dvh;
     display: flex;
@@ -317,6 +365,19 @@ textarea.nq-input {
     color: var(--ink-disabled);
     cursor: not-allowed;
     box-shadow: none;
+}
+
+/* Stable footer-button width so label morphs (Continue→Signing…/Verifying…)
+   plus the busy spinner don't resize the button. */
+.keyguard-footer .btn-primary {
+    min-width: 9.5em;
+}
+
+/* The mnemonic countdown button morphs across a wide range
+   ("Wait 10s" → "I've written them down"); reserve its widest width. Placed
+   after the footer rule so the equal-specificity tiebreak picks this. */
+.keyguard-footer .btn-countdown {
+    min-width: 208px;
 }
 
 .btn-primary.danger {
@@ -766,5 +827,10 @@ button[aria-busy="true"]::after {
 
     .biometric-trigger svg {
         animation: none;
+    }
+
+    .kg-skeleton {
+        animation: none;
+        opacity: 0.6;
     }
 }

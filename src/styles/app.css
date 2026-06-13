@@ -69,6 +69,10 @@
     --radius-m: 16px;
     --t-fast: 100ms;
     --t-base: 160ms;
+    --t-slow: 240ms;
+    --ease-out:    cubic-bezier(0.22, 0.61, 0.36, 1);
+    --ease-in:     cubic-bezier(0.55, 0.06, 0.68, 0.19);
+    --ease-in-out: cubic-bezier(0.45, 0.05, 0.55, 0.95);
 
     /* Safe areas */
     --safe-top: env(safe-area-inset-top, 0px);
@@ -123,6 +127,9 @@ html {
     font-family: var(--font-ui);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Reserve the scrollbar gutter so a list growing past one screen never
+       shifts the flex-centered card sideways. both-edges keeps it centered. */
+    scrollbar-gutter: stable both-edges;
 }
 
 body {
@@ -146,6 +153,9 @@ body {
     width: 100%;
     max-width: 480px;
     margin: 0 auto;
+    /* Router pins min-height to the outgoing view's height across a swap, then
+       releases it so this transition eases down to the new view's height. */
+    transition: min-height var(--t-slow) var(--ease-in-out);
 }
 
 .loading-screen {
@@ -535,6 +545,9 @@ details.advanced > .advanced-body {
     width: auto;
     max-width: none;
     margin: 0;
+    /* Absorb label morphs ("Send"→"Opening keyguard…"→"Sending…") plus the
+       aria-busy spinner so the footer button never resizes mid-flow. */
+    min-width: 11.5em;
 }
 
 /* ---- Welcome / receive bodies ---- */
@@ -608,6 +621,10 @@ details.advanced > .advanced-body {
     gap: 6px;
     font-weight: 600;
     color: var(--ink-secondary);
+    /* Fixed width so "Connecting…"→"Syncing…"→"Connected" never shifts the
+       network label beside it. Pairs with the same width on .block-height to
+       keep the centered status row symmetric. */
+    min-width: 92px;
 }
 
 .consensus-indicator::before {
@@ -645,6 +662,10 @@ details.advanced > .advanced-body {
 .block-height {
     color: var(--ink-muted);
     font-size: var(--text-xs);
+    /* Reserved (and mirrored on .consensus-indicator) so the height appearing
+       after sync doesn't re-center the status row. */
+    min-width: 92px;
+    white-space: nowrap;
 }
 
 /* ---- Dashboard: balance hero ---- */
@@ -991,7 +1012,9 @@ details.advanced > .advanced-body {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: 12px 4px;
+    /* 10px (not 12) so a skeleton row is exactly 56px = .tx-item min-height,
+       making the skeleton → real-rows swap geometrically silent. */
+    padding: 10px 4px;
 }
 
 .skeleton {
@@ -1019,6 +1042,122 @@ details.advanced > .advanced-body {
 @keyframes shimmer {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
+}
+
+/* ---- Layout-stability primitives (see src/modules/ui.js) ---- */
+
+/* Inline, width-stable placeholder for async text (balances, fees, status
+   lines). Pair with .skeleton for the shimmer. Sized in ch via --w so it
+   tracks the local font; height < 1em so it never grows the line box. */
+.skeleton-text {
+    display: inline-block;
+    width: var(--w, 6ch);
+    max-width: 100%;
+    height: 0.85em;
+    vertical-align: -0.05em;
+    border-radius: 4px;
+}
+
+/* One-time "value settles in" fade when async content first lands. Opacity
+   only — transforms don't apply to inline numbers and movement reads as error. */
+.value-settle {
+    animation: valueSettle var(--t-base) var(--ease-out);
+}
+
+@keyframes valueSettle {
+    from { opacity: 0; }
+}
+
+/* Zero-reflow show/hide for banners and status slots. Height animates via a
+   0fr→1fr grid track (Safari 16+, within the app's color-mix() baseline).
+   Contract: exactly ONE child, and its spacing must be padding — a margin
+   would survive the collapsed state and leave a permanent gap. */
+.reveal {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows var(--t-slow) var(--ease-in-out),
+                opacity var(--t-slow) var(--ease-in-out);
+}
+
+.reveal > * {
+    min-height: 0;
+    overflow: hidden;
+    margin: 0;
+    visibility: hidden;          /* out of the a11y tree + untabbable when closed */
+    transition: visibility 0s linear var(--t-slow);
+}
+
+.reveal.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+
+.reveal.open > * {
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+/* Reserve vertical space for async lists so skeleton → content → empty-state
+   all occupy the same height. --rows = expected rows; 56px = .tx-item height. */
+.list-reserve {
+    min-height: calc(var(--rows, 4) * 56px);
+}
+
+.list-reserve > .no-txs:only-child,
+.list-reserve > .empty-state:only-child,
+.list-reserve > .error-text:only-child {
+    margin-top: auto;
+    margin-bottom: auto;
+}
+
+/* Width-stable button for morphing labels (history "Load older" → "Scanning…"
+   → "Beginning of history" → "failed — retry"). */
+.btn-stable-wide {
+    min-width: 200px;
+    text-align: center;
+}
+
+/* Send-view status slots — children of a .reveal, so spacing is padding (a
+   margin would survive the collapsed state). One ambient connection notice
+   (.status-net) and one mutually-exclusive message area (.status-msg). */
+.status-net {
+    margin: 0;
+    padding-top: var(--space-2);
+    text-align: center;
+    font-size: var(--text-s);
+    color: var(--ink-muted);
+}
+
+.status-msg {
+    padding-top: var(--space-3);
+}
+
+.status-msg p {
+    margin: 0;
+    font-size: var(--text-s);
+    line-height: 1.5;
+}
+
+.status-error p { color: var(--negative); }
+.status-warning p { color: var(--warning-ink); }
+
+.status-success {
+    text-align: center;
+}
+
+.status-success p:first-child {
+    color: var(--positive);
+    font-weight: 600;
+    font-size: var(--text-m);
+}
+
+.status-msg p.tx-hash {
+    margin-top: var(--space-1);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-muted);
+    word-break: break-all;
 }
 
 /* ---- Activity / transaction list ---- */
@@ -1159,6 +1298,10 @@ details.advanced > .advanced-body {
 
 /* ---- QR ---- */
 #qr-container {
+    /* Fixed 200px canvas + 16px padding each side = 232px. Reserved so the box
+       holds its size before the (deferred) QR draw and across asset toggles. */
+    width: 232px;
+    height: 232px;
     padding: var(--space-4);
     background: #fff; /* literal: QR must stay dark-on-light in dark mode */
     border-radius: var(--radius-m);
@@ -1331,6 +1474,15 @@ details.advanced > .advanced-body {
     font-size: var(--text-xs);
     font-weight: 700;
     font-family: var(--font-ui);
+    /* Stable width so Pending→Sending…→Sent/Failed never jiggles the row. */
+    min-width: 64px;
+    text-align: center;
+}
+
+/* Fixed status column so the badge width changes can't reflow the amount cell. */
+.batch-table th:last-child,
+.batch-table td:last-child {
+    width: 92px;
 }
 
 .batch-badge-pending {
@@ -1611,7 +1763,7 @@ details.advanced > .advanced-body {
     cursor: pointer;
     opacity: 0;
     transform: translateY(12px);
-    transition: opacity var(--t-base), transform var(--t-base);
+    transition: opacity var(--t-base) var(--ease-out), transform var(--t-base) var(--ease-out);
     max-width: 100%;
     text-align: center;
 }
@@ -1646,18 +1798,27 @@ details.advanced > .advanced-body {
 
 /* ---- View transitions (router toggles these hooks) ---- */
 .view-container,
-.view-container[data-transition="forward"],
+.view-container[data-transition="forward"] {
+    animation: viewEnter 200ms var(--ease-out) both;
+}
+
+/* Back-navigation enters from the opposite direction for a sense of place. */
 .view-container[data-transition="back"] {
-    animation: viewEnter 200ms ease-out both;
+    animation: viewEnterBack 200ms var(--ease-out) both;
 }
 
 /* router.js waits 120ms before swapping — exit must finish within that */
 .view-exit {
-    animation: viewExit 100ms ease-in both;
+    animation: viewExit 100ms var(--ease-in) both;
 }
 
 @keyframes viewEnter {
     from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes viewEnterBack {
+    from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -1739,6 +1900,9 @@ details.advanced > .advanced-body {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+        /* Without this, .reveal's visibility delay would leave content invisible
+           for --t-slow even though the height "transition" is zeroed. */
+        transition-delay: 0s !important;
     }
 
     /* Busy ring stays visible as a static affordance */

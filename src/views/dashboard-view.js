@@ -2,10 +2,11 @@ import { navigate } from '../router.js';
 import { getStoredAddress, getDerivedAddresses, getPolygonAddress, activatePolygon } from '../modules/keyguard-api.js';
 import * as network from '../modules/network-client.js';
 import { formatNim, formatToken, getSelectedNetwork, isStablecoinsEnabled, ASSETS, NETWORKS } from '../config.js';
-import { renderTxItem, renderTokenTxItem } from './history-view.js';
+import { renderTxItem, renderTokenTxItem, renderSkeletonRows } from './history-view.js';
 import { assetLogo } from '../lib/asset-logos.js';
 import { showToast } from '../modules/toast.js';
 import { enablePullToRefresh } from '../modules/gestures.js';
+import { skeletonText, settleText, setReveal, reserveList } from '../modules/ui.js';
 
 // ── Active address index (persists across navigations) ───────────
 export function getActiveAddressIndex() {
@@ -151,11 +152,11 @@ export async function dashboardView() {
                 <div class="status-bar">
                     <span class="consensus-indicator" id="d-consensus" role="status"></span>
                     <span class="network-label">${networkLabel}</span>
-                    <span class="block-height" id="d-block-height" style="display:none;"></span>
+                    <span class="block-height" id="d-block-height"></span>
                 </div>
                 <div class="balance-display">
                     <span class="nq-label">Balance</span>
-                    <span class="balance-amount nq-h1" id="d-balance">...</span>
+                    <span class="balance-amount nq-h1" id="d-balance"></span>
                     <span class="balance-currency">NIM</span>
                 </div>
                 <div class="address-row">
@@ -176,12 +177,12 @@ export async function dashboardView() {
                         <h2 class="nq-label">Assets</h2>
                     </div>
                     <div class="asset-list" id="asset-list"></div>
-                    <div id="polygon-prompt"></div>
+                    <div id="polygon-prompt" class="reveal"><div class="empty-state"></div></div>
                 </div>
                 <div class="recent-txs">
                     <div class="section-header">
                         <h2 class="nq-label">Activity</h2>
-                        <a class="nq-link" id="btn-all-txs" style="display:none;">View all</a>
+                        <a class="nq-link" id="btn-all-txs" style="visibility:hidden;">View all</a>
                     </div>
                     <div class="tx-list" id="d-tx-list"></div>
                 </div>
@@ -200,6 +201,9 @@ export async function dashboardView() {
     const $btnAllTxs = el.querySelector('#btn-all-txs');
     const $picker = el.querySelector('#addr-picker');
     const $pickerBtn = el.querySelector('#btn-addr-picker');
+
+    // Reserve activity-list height so skeleton → rows → empty-state don't jump.
+    reserveList($txList, 3);
 
     function renderAddress() {
         $address.textContent = currentAddress;
@@ -257,12 +261,16 @@ export async function dashboardView() {
 
             details.appendChild(addrSpan);
 
+            // Always render the balance line (chip until known) so a row keeps
+            // its height from the moment the picker opens.
+            const balSpan = document.createElement('span');
+            balSpan.className = 'addr-picker-bal';
             if (balances && balances[entry.address] !== undefined) {
-                const balSpan = document.createElement('span');
-                balSpan.className = 'addr-picker-bal';
                 balSpan.textContent = formatNim(balances[entry.address]) + ' NIM';
-                details.appendChild(balSpan);
+            } else {
+                skeletonText(balSpan, 9);
             }
+            details.appendChild(balSpan);
 
             row.appendChild(idxSpan);
             row.appendChild(details);
@@ -289,12 +297,21 @@ export async function dashboardView() {
         // document has already passed, and onOutsideClick ignores the button.
         document.addEventListener('click', onOutsideClick, true);
 
-        // Then fetch balances and re-render
+        // Then fetch balances and fill them into the existing rows in place
+        // (same order as allAddresses) — no rebuild under the pointer.
         try {
             const hasConsensus = await network.isConsensusEstablished();
             if (hasConsensus) {
                 const balances = await network.getBalances(allAddresses.map(a => a.address));
-                if (pickerOpen) buildPickerRows(balances);
+                if (pickerOpen) {
+                    const rows = $picker.querySelectorAll('.addr-picker-row');
+                    allAddresses.forEach((a, i) => {
+                        const balSpan = rows[i] && rows[i].querySelector('.addr-picker-bal');
+                        if (balSpan && balances[a.address] !== undefined) {
+                            balSpan.textContent = formatNim(balances[a.address]) + ' NIM';
+                        }
+                    });
+                }
             }
         } catch (_) {}
     }
@@ -359,7 +376,8 @@ export async function dashboardView() {
         amounts.className = 'asset-amounts';
         const bal = document.createElement('span');
         bal.className = 'asset-balance';
-        bal.textContent = balanceText;
+        if (balanceText === null) skeletonText(bal, 6);
+        else bal.textContent = balanceText;
         const sym = document.createElement('span');
         sym.className = 'asset-symbol';
         sym.textContent = meta.symbol;
@@ -375,14 +393,25 @@ export async function dashboardView() {
         return row;
     }
 
+    let lastAssetSig = null;
     function renderAssetRows() {
         if (assetsGone) return;
+        // Skip the rebuild when nothing visible changed — head events fire ~1/s
+        // and would otherwise re-create every row (losing hover) each block.
+        const sig = [
+            currentAddress, cache.balance, polygonCache.address,
+            polygonCache.balances && polygonCache.balances.usdc,
+            polygonCache.balances && polygonCache.balances.usdt,
+        ].join('|');
+        if (sig === lastAssetSig) return;
+        lastAssetSig = sig;
+
         $assetList.innerHTML = '';
 
         const nimShort = currentAddress.substring(0, 9) + '…';
         $assetList.appendChild(buildAssetRow(
             'nim',
-            cache.balance !== null ? formatNim(cache.balance) : '…',
+            cache.balance !== null ? formatNim(cache.balance) : null,
             nimShort,
             () => navigate('#asset-nim'),
         ));
@@ -391,7 +420,7 @@ export async function dashboardView() {
         for (const token of ['usdc', 'usdt']) {
             $assetList.appendChild(buildAssetRow(
                 token,
-                polygonCache.balances ? formatToken(polygonCache.balances[token]) : '…',
+                polygonCache.balances ? formatToken(polygonCache.balances[token]) : null,
                 'Polygon',
                 () => navigate('#asset-' + token),
             ));
@@ -400,11 +429,12 @@ export async function dashboardView() {
 
     function renderPolygonPrompt(kind, message) {
         if (assetsGone) return;
-        $polygonPrompt.innerHTML = '';
-        if (kind === 'none') return;
+        // The .reveal wraps a persistent .empty-state child; we fill that child
+        // and animate the slot open/closed instead of toggling layout height.
+        const wrap = $polygonPrompt.firstElementChild;
+        wrap.innerHTML = '';
+        if (kind === 'none') { setReveal($polygonPrompt, false); return; }
 
-        const wrap = document.createElement('div');
-        wrap.className = 'empty-state';
         const hint = document.createElement('p');
         hint.className = 'nq-text-s';
         hint.style.marginBottom = '10px';
@@ -457,7 +487,7 @@ export async function dashboardView() {
             });
             wrap.append(hint, retry);
         }
-        $polygonPrompt.appendChild(wrap);
+        setReveal($polygonPrompt, true);
     }
 
     // Token activity for the unified feed: cached rows immediately, then a
@@ -538,21 +568,23 @@ export async function dashboardView() {
     if (isStablecoinsEnabled()) refreshPolygon();
 
     // ── Render from cache ───────────────────────────────────────
+    let lastConsensus = null;
+    let lastTxSig = null;
     function update() {
-        const consensusClass = cache.consensus === 'established' ? 'consensus-ok' : 'consensus-syncing';
-        const consensusText = cache.consensus === 'established' ? 'Connected' :
-                              cache.consensus === 'syncing' ? 'Syncing...' : 'Connecting...';
-        $consensus.className = `consensus-indicator ${consensusClass}`;
-        $consensus.textContent = consensusText;
-
-        $balance.textContent = cache.balance !== null ? formatNim(cache.balance) : '...';
-
-        if (cache.headHeight) {
-            $blockHeight.textContent = `Block #${cache.headHeight.toLocaleString()}`;
-            $blockHeight.style.display = '';
-        } else {
-            $blockHeight.style.display = 'none';
+        if (lastConsensus !== cache.consensus) {
+            lastConsensus = cache.consensus;
+            const consensusClass = cache.consensus === 'established' ? 'consensus-ok' : 'consensus-syncing';
+            const consensusText = cache.consensus === 'established' ? 'Connected' :
+                                  cache.consensus === 'syncing' ? 'Syncing...' : 'Connecting...';
+            $consensus.className = `consensus-indicator ${consensusClass}`;
+            $consensus.textContent = consensusText;
         }
+
+        if (cache.balance !== null) settleText($balance, formatNim(cache.balance));
+        else skeletonText($balance, 7);
+
+        // Always present (width reserved in CSS) — updates each block, no toggle.
+        $blockHeight.textContent = cache.headHeight ? `Block #${cache.headHeight.toLocaleString()}` : '';
 
         renderAssetRows();
 
@@ -563,18 +595,23 @@ export async function dashboardView() {
             ...(polygonCache.tokenTxs || []).map(tx => ({ token: tx.token, ts: tx.timestamp || FUTURE, tx })),
         ].sort((a, b) => b.ts - a.ts).slice(0, 6);
 
+        // Skip the rebuild when the visible set is unchanged — head events fire
+        // ~1/s; rebuilding would collapse any expanded tx-detail and flicker.
+        const txSig = entries.map(({ token, tx }) =>
+            `${token || 'nim'}:${tx.transactionHash || tx.txHash || ''}:${tx.state || ''}:${tx.blockHeight || tx.blockNumber || ''}`
+        ).join('|') + `|${currentAddress}|${cache.consensus}`;
+        if (txSig === lastTxSig) return;
+        lastTxSig = txSig;
+
         $txList.innerHTML = '';
         if (entries.length > 0) {
             entries.forEach(({ token, tx }) => {
                 $txList.appendChild(token ? renderTokenTxItem(tx) : renderTxItem(tx, currentAddress));
             });
-            $btnAllTxs.style.display = '';
+            $btnAllTxs.style.visibility = 'visible';
         } else if (cache.consensus !== 'established') {
-            const placeholder = document.createElement('p');
-            placeholder.className = 'nq-text no-txs';
-            placeholder.textContent = 'Connecting to the network…';
-            $txList.appendChild(placeholder);
-            $btnAllTxs.style.display = 'none';
+            $txList.appendChild(renderSkeletonRows(3));
+            $btnAllTxs.style.visibility = 'hidden';
         } else {
             const empty = document.createElement('div');
             empty.className = 'empty-state';
@@ -600,7 +637,7 @@ export async function dashboardView() {
                 empty.appendChild(faucet);
             }
             $txList.appendChild(empty);
-            $btnAllTxs.style.display = 'none';
+            $btnAllTxs.style.visibility = 'hidden';
         }
     }
 

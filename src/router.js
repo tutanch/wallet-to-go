@@ -70,6 +70,7 @@ async function handleHashChange() {
 
     // Fade out old view
     const oldView = $app.firstElementChild;
+    const oldHeight = $app.offsetHeight; // single layout read, before any mutation
     if (oldView) {
         oldView.classList.add('view-exit');
         await new Promise(r => setTimeout(r, 120));
@@ -81,6 +82,13 @@ async function handleHashChange() {
         currentCleanup = null;
     }
 
+    // Pin the container to the outgoing height with the transition OFF, so
+    // emptying it can't collapse the page. The release (below) turns the
+    // transition back on and eases min-height down to the new view's height.
+    if (oldHeight) {
+        $app.style.transition = 'none';
+        $app.style.minHeight = oldHeight + 'px';
+    }
     $app.innerHTML = '';
 
     let viewEl = null;
@@ -98,6 +106,26 @@ async function handleHashChange() {
     // Apply directional transition
     if (viewEl) {
         viewEl.setAttribute('data-transition', direction);
+    }
+
+    // A new view starts at the top — don't inherit the old view's scroll.
+    window.scrollTo(0, 0);
+
+    // Next frame (the pin is now committed): re-enable the transition and
+    // release the floor. The shrink to the new content height animates; a
+    // taller view just grows instantly under its enter fade. Then clear both
+    // inline styles once settled, unless a newer navigation has taken over.
+    if (oldHeight) {
+        requestAnimationFrame(() => {
+            if (thisNavId !== navigationId) return;
+            $app.style.transition = '';
+            $app.style.minHeight = '0px';
+            setTimeout(() => {
+                if (thisNavId !== navigationId) return;
+                $app.style.minHeight = '';
+                $app.style.transition = '';
+            }, 300);
+        });
     }
 
     previousHash = hash;

@@ -5,6 +5,7 @@ import * as network from '../modules/network-client.js';
 import { formatNim, formatToken, isStablecoinsEnabled, ASSETS, getExplorerTxUrl } from '../config.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+import { reserveList } from '../modules/ui.js';
 
 // Scan-window sizes mirrored from polygon-history.js (for honest scan info)
 const INITIAL_SCAN_DAYS = 1;
@@ -74,6 +75,9 @@ export async function historyView() {
     let activeAsset = 'nim';
     let gone = false;
 
+    // Reserve list height so skeleton → rows → empty-state don't change height.
+    reserveList(txList, 4);
+
     // ── NIM history ────────────────────────────────────────────────────────
     async function showNimHistory() {
         loadOlderBtn.style.display = 'none';
@@ -83,8 +87,10 @@ export async function historyView() {
         // Instant: reuse what the dashboard already loaded for this address, so
         // the list isn't blank while the (slow) full history proof is fetched.
         const cached = getCachedNimTxs(address);
+        let renderedSig = null;
         if (cached.length) {
             cached.forEach((tx) => txList.appendChild(renderTxItem(tx, address)));
+            renderedSig = nimHistorySig(cached);
         } else {
             txList.appendChild(renderSkeletonRows(4));
         }
@@ -92,6 +98,9 @@ export async function historyView() {
         try {
             const txs = await network.getHistory(address, 50);
             if (gone || activeAsset !== 'nim') return;
+            // If the full proof matches the cached rows already on screen, leave
+            // them in place so a row the user expanded mid-fetch stays open.
+            if (cached.length && nimHistorySig(txs) === renderedSig) return;
             txList.innerHTML = '';
             if (txs.length === 0) {
                 txList.innerHTML = '<p class="nq-text no-txs">No transactions yet</p>';
@@ -160,10 +169,16 @@ export async function historyView() {
  * navigation or tab switches.
  */
 export async function mountTokenHistory({ list, loadOlderBtn, scanInfo, polygonAddress, token, isActive }) {
-    loadOlderBtn.style.display = 'none';
-    loadOlderBtn.disabled = false;
-    loadOlderBtn.textContent = 'Load older';
-    scanInfo.style.display = 'none';
+    // Reserve the footer controls up front (visible but inert) so they don't
+    // pop in after the first render — only their text/disabled state changes.
+    reserveList(list, 4);
+    loadOlderBtn.style.display = '';
+    loadOlderBtn.disabled = true;
+    loadOlderBtn.setAttribute('aria-busy', 'true');
+    loadOlderBtn.textContent = 'Loading…';
+    loadOlderBtn.classList.add('btn-stable-wide');
+    scanInfo.style.display = '';
+    scanInfo.textContent = '';
     list.innerHTML = '';
     list.appendChild(renderSkeletonRows(4));
 
@@ -182,13 +197,11 @@ export async function mountTokenHistory({ list, loadOlderBtn, scanInfo, polygonA
             } else {
                 txs.forEach((tx) => list.appendChild(renderTokenTxItem(tx)));
             }
-            loadOlderBtn.style.display = '';
             return txs.length;
         };
 
         const updateScanInfo = (count, reachedFloor) => {
             if (!isActive()) return;
-            scanInfo.style.display = '';
             if (reachedFloor) {
                 scanInfo.textContent = count === 0
                     ? 'Scanned the full history of this wallet — no transfers found.'
@@ -205,11 +218,9 @@ export async function mountTokenHistory({ list, loadOlderBtn, scanInfo, polygonA
 
         // Auto-deepen: an empty list with more history below the scan window
         // reads as "no history available" — keep scanning instead of
-        // dead-ending on the user.
+        // dead-ending on the user. The button stays busy (set above) until here.
         let reachedFloor = false;
         if (count === 0) {
-            loadOlderBtn.disabled = true;
-            loadOlderBtn.setAttribute('aria-busy', 'true');
             for (let page = 0; page < AUTO_DEEPEN_PAGES && count === 0 && !reachedFloor; page++) {
                 loadOlderBtn.textContent = 'Scanning older history…';
                 try {
@@ -222,10 +233,11 @@ export async function mountTokenHistory({ list, loadOlderBtn, scanInfo, polygonA
                 if (!isActive()) return;
                 count = await render();
             }
-            loadOlderBtn.disabled = reachedFloor;
-            loadOlderBtn.removeAttribute('aria-busy');
-            loadOlderBtn.textContent = reachedFloor ? 'Beginning of history' : 'Load older';
         }
+        // Settle the button into its interactive resting state (both branches).
+        loadOlderBtn.disabled = reachedFloor;
+        loadOlderBtn.removeAttribute('aria-busy');
+        loadOlderBtn.textContent = reachedFloor ? 'Beginning of history' : 'Load older';
         updateScanInfo(count, reachedFloor);
 
         loadOlderBtn.onclick = async () => {
@@ -283,6 +295,12 @@ export function renderSkeletonRows(count = 3) {
         frag.appendChild(row);
     }
     return frag;
+}
+
+// Stable signature of a NIM tx list — lets showNimHistory skip a rebuild when
+// the fetched proof matches the cached rows already rendered.
+function nimHistorySig(txs) {
+    return txs.map(t => `${t.transactionHash || ''}:${t.state || ''}:${t.blockHeight || ''}`).join('|');
 }
 
 function shortAddress(addr, head, tail) {

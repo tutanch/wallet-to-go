@@ -7,6 +7,7 @@ import { renderTxItem, renderSkeletonRows, mountTokenHistory } from './history-v
 import { assetLogo } from '../lib/asset-logos.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+import { skeletonText, settleText, reserveList } from '../modules/ui.js';
 
 /**
  * Per-asset view: balance, address, Send/Receive preselected for the asset,
@@ -88,7 +89,7 @@ export async function assetView(asset) {
                     <p class="nq-text-s">${meta.network}</p>
                 </div>
                 <div class="balance-display">
-                    <span class="balance-amount" id="a-balance" aria-live="polite">…</span>
+                    <span class="balance-amount" id="a-balance" aria-live="polite"></span>
                     <span class="balance-currency">${meta.symbol}</span>
                 </div>
                 <div class="address-display" id="address-copy" title="Click to copy" role="button" tabindex="0" aria-label="Copy address">
@@ -119,18 +120,19 @@ export async function assetView(asset) {
 
     // ── Balance ────────────────────────────────────────────────────────────
     const $balance = el.querySelector('#a-balance');
+    skeletonText($balance, 7);
     (async () => {
         try {
             if (asset === 'nim') {
                 const balance = await network.getBalance(nimAddress);
-                if (!gone) $balance.textContent = formatNim(balance);
+                if (!gone) settleText($balance, formatNim(balance));
             } else {
                 const { getStablecoinBalances } = await import('../modules/polygon/polygon-client.js');
                 const balances = await getStablecoinBalances(polygonAddress);
-                if (!gone) $balance.textContent = formatToken(balances[asset]);
+                if (!gone) settleText($balance, formatToken(balances[asset]));
             }
         } catch (_) {
-            if (!gone) $balance.textContent = '—';
+            if (!gone) settleText($balance, '—');
         }
     })();
 
@@ -173,6 +175,9 @@ export async function assetView(asset) {
     const txList = el.querySelector('#a-tx-list');
     const loadOlderBtn = el.querySelector('#btn-load-older');
     const scanInfo = el.querySelector('#scan-info');
+
+    // Reserve list height so skeleton → rows → empty-state don't change height.
+    reserveList(txList, 4);
 
     if (asset === 'nim') {
         (async () => {

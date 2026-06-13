@@ -2,10 +2,34 @@ import { navigate } from '../router.js';
 import { getStoredAddress, getDerivedAddresses, signTransaction, getPolygonAddress } from '../modules/keyguard-api.js';
 import { getActiveAddressIndex } from './dashboard-view.js';
 import * as network from '../modules/network-client.js';
-import { nimToLuna, getNetworkConfig, isStablecoinsEnabled, tokenToUnits, formatToken, POLYGON } from '../config.js';
+import { nimToLuna, formatNim, getNetworkConfig, isStablecoinsEnabled, tokenToUnits, formatToken, POLYGON } from '../config.js';
 import { loadNimiq } from '../nimiq.js';
 import { showToast } from '../modules/toast.js';
 import { enableSwipeBack } from '../modules/gestures.js';
+import { skeletonText, settleText, setReveal } from '../modules/ui.js';
+
+// Status helpers shared by both panels. Each slot is a .reveal, so showing or
+// clearing a message animates its height instead of reflowing the form. The
+// "msg" slot is one mutually-exclusive area for validation/error/success.
+function showMsg(slot, kind, text, detail) {
+    const inner = slot.firstElementChild;
+    inner.className = 'status-msg status-' + kind;
+    inner.textContent = '';
+    const p = document.createElement('p');
+    p.textContent = text;
+    inner.appendChild(p);
+    if (detail) {
+        const d = document.createElement('p');
+        d.className = 'tx-hash';
+        d.textContent = detail;
+        inner.appendChild(d);
+    }
+    setReveal(slot, true);
+}
+
+function clearMsg(slot) {
+    setReveal(slot, false);
+}
 
 export async function sendView() {
     const defaultAddress = await getStoredAddress();
@@ -95,7 +119,7 @@ export async function sendView() {
                         <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.00001" min="0">
                         <button class="nq-button-s" id="btn-max" type="button">Max</button>
                     </div>
-                    <p class="field-hint"><span id="nim-balance" aria-live="polite">Balance: …</span></p>
+                    <p class="field-hint"><span>Balance: <span id="nim-balance" aria-live="polite"></span></span></p>
                 </div>
                 <div class="form-group">
                     <label class="nq-label" for="message">Message (optional, max 64 bytes)</label>
@@ -110,13 +134,8 @@ export async function sendView() {
                         </div>
                     </div>
                 </details>
-                <p class="nq-text-s" id="net-status" aria-live="polite" style="display: none; text-align: center;"></p>
-                <p class="nq-text error-text" id="warning" role="alert" style="display: none;"></p>
-                <p class="nq-text error-text" id="error" role="alert" style="display: none;"></p>
-                <div class="success-message" id="success" role="status" style="display: none;">
-                    <p class="nq-text success-text">Transaction sent successfully!</p>
-                    <p class="nq-text tx-hash" id="tx-hash"></p>
-                </div>
+                <div class="reveal" id="net-slot"><p class="status-net" id="net-status" role="status" aria-live="polite"></p></div>
+                <div class="reveal" id="msg-slot"><div class="status-msg" id="msg-inner" role="status" aria-live="polite"></div></div>
             </div>
             <div class="nq-card-footer">
                 <button class="nq-button-s" id="btn-back">Back</button>
@@ -129,19 +148,23 @@ export async function sendView() {
         let nimGone = false;
         let balanceLuna = null;
 
+        const netSlot = panel.querySelector('#net-slot');
+        const msgSlot = panel.querySelector('#msg-slot');
+
         panel.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
         panel.querySelector('#recipient').addEventListener('input', () => { selfSendConfirmed = false; });
 
         // Balance + Max (parity with the token panel)
         const balanceEl = panel.querySelector('#nim-balance');
+        skeletonText(balanceEl, 7);
         (async () => {
             try {
                 const balance = await network.getBalance(address);
                 if (nimGone) return;
                 balanceLuna = balance;
-                balanceEl.textContent = `Balance: ${formatNim(balance)} NIM`;
+                settleText(balanceEl, `${formatNim(balance)} NIM`);
             } catch (_) {
-                if (!nimGone) balanceEl.textContent = '';
+                if (!nimGone) settleText(balanceEl, 'unavailable');
             }
         })();
 
@@ -154,18 +177,18 @@ export async function sendView() {
 
         // Surface network state where the action happens — sending waits on
         // consensus, so say so instead of failing with a timeout later.
-        const netStatus = panel.querySelector('#net-status');
         let netTimer = null;
+        let lastNetOk = null;
         async function checkNet() {
             try {
                 const ok = await network.isConsensusEstablished();
-                if (nimGone) return;
+                if (nimGone || ok === lastNetOk) return; // only act on a state change
+                lastNetOk = ok;
                 if (ok) {
-                    netStatus.style.display = 'none';
+                    setReveal(netSlot, false);
                     if (netTimer) { clearInterval(netTimer); netTimer = null; }
                 } else {
-                    netStatus.textContent = 'Connecting to the network — sending waits for sync.';
-                    netStatus.style.display = '';
+                    setReveal(netSlot, true, 'Connecting to the network — sending waits for sync.');
                 }
             } catch (_) {}
         }
@@ -179,12 +202,7 @@ export async function sendView() {
         panel.querySelector('#btn-send').addEventListener('click', async () => {
             if (sending) return;
 
-            const errorEl = panel.querySelector('#error');
-            const warningEl = panel.querySelector('#warning');
-            const successEl = panel.querySelector('#success');
-            errorEl.style.display = 'none';
-            warningEl.style.display = 'none';
-            successEl.style.display = 'none';
+            clearMsg(msgSlot);
 
             // Validate inputs
             const recipientValue = panel.querySelector('#recipient').value.trim();
@@ -192,8 +210,7 @@ export async function sendView() {
             const valueLuna = nimToLuna(amountRaw);
 
             if (!recipientValue) {
-                errorEl.textContent = 'Please enter a recipient address.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Please enter a recipient address.');
                 return;
             }
 
@@ -201,30 +218,26 @@ export async function sendView() {
                 const Nimiq = await loadNimiq();
                 Nimiq.Address.fromString(recipientValue);
             } catch {
-                errorEl.textContent = 'Invalid Nimiq address.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Invalid Nimiq address.');
                 return;
             }
 
             if (recipientValue.replace(/\s/g, '') === address.replace(/\s/g, '')) {
                 if (!selfSendConfirmed) {
-                    warningEl.textContent = 'You are sending to your own address. Click Send again to confirm.';
-                    warningEl.style.display = '';
+                    showMsg(msgSlot, 'warning', 'You are sending to your own address. Click Send again to confirm.');
                     selfSendConfirmed = true;
                     return;
                 }
             }
 
             if (isNaN(valueLuna) || valueLuna <= 0) {
-                errorEl.textContent = 'Please enter a valid amount.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Please enter a valid amount.');
                 return;
             }
 
             const msgBytes = new TextEncoder().encode(panel.querySelector('#message').value);
             if (msgBytes.length > 64) {
-                errorEl.textContent = 'Message exceeds 64 bytes.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Message exceeds 64 bytes.');
                 return;
             }
 
@@ -261,8 +274,7 @@ export async function sendView() {
 
                 const result = await network.sendSerializedTransaction(serializedTx);
 
-                successEl.style.display = '';
-                panel.querySelector('#tx-hash').textContent = `TX: ${result.transactionHash.substring(0, 16)}...`;
+                showMsg(msgSlot, 'success', 'Transaction sent successfully!', `TX: ${result.transactionHash.substring(0, 16)}...`);
                 btn.removeAttribute('aria-busy');
                 btn.textContent = 'Done';
                 showToast('Transaction sent!', 'success');
@@ -279,14 +291,15 @@ export async function sendView() {
 
                 console.error('Transaction failed:', e);
                 const msg = e.message || '';
+                let errText;
                 if (msg.includes('Network ID mismatch')) {
-                    errorEl.textContent = 'Network mismatch. Please check your network setting.';
+                    errText = 'Network mismatch. Please check your network setting.';
                 } else if (msg.includes('Consensus timeout')) {
-                    errorEl.textContent = 'Could not connect to network. Please try again.';
+                    errText = 'Could not connect to network. Please try again.';
                 } else {
-                    errorEl.textContent = 'Transaction failed. Please try again.';
+                    errText = 'Transaction failed. Please try again.';
                 }
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', errText);
             }
         });
     }
@@ -307,18 +320,13 @@ export async function sendView() {
                         <input type="number" class="nq-input" id="amount" placeholder="0.00" step="0.000001" min="0">
                         <button class="nq-button-s" id="btn-max" type="button">Max</button>
                     </div>
-                    <p class="nq-text nq-text-s" id="token-balance" aria-live="polite">Balance: …</p>
+                    <p class="nq-text nq-text-s">Balance: <span id="token-balance" aria-live="polite"></span></p>
                 </div>
                 <div class="form-group">
                     <span class="nq-label">Network Fee (paid in ${symbol})</span>
-                    <p class="nq-text" id="fee-display" aria-live="polite">Estimating…</p>
+                    <p class="nq-text"><span id="fee-display" aria-live="polite"></span></p>
                 </div>
-                <p class="nq-text error-text" id="warning" role="alert" style="display: none;"></p>
-                <p class="nq-text error-text" id="error" role="alert" style="display: none;"></p>
-                <div class="success-message" id="success" role="status" style="display: none;">
-                    <p class="nq-text success-text">Transaction sent successfully!</p>
-                    <p class="nq-text tx-hash" id="tx-hash"></p>
-                </div>
+                <div class="reveal" id="msg-slot"><div class="status-msg" id="msg-inner" role="status" aria-live="polite"></div></div>
             </div>
             <div class="nq-card-footer">
                 <button class="nq-button-s" id="btn-back">Back</button>
@@ -332,12 +340,16 @@ export async function sendView() {
         let balanceUnits = null;
         panelCleanup = () => { cancelled = true; };
 
+        const msgSlot = panel.querySelector('#msg-slot');
+
         panel.querySelector('#btn-back').addEventListener('click', () => navigate('#dashboard'));
 
         // Fee estimate + balance (lazy imports keep the NIM-only path light)
         (async () => {
             const feeEl = panel.querySelector('#fee-display');
             const balanceEl = panel.querySelector('#token-balance');
+            skeletonText(feeEl, 9);
+            skeletonText(balanceEl, 9);
             try {
                 const [{ estimateFee }, { getStablecoinBalances }] = await Promise.all([
                     import('../modules/polygon/polygon-send.js'),
@@ -350,13 +362,13 @@ export async function sendView() {
                 if (cancelled) return;
                 feeEstimate = estimate;
                 balanceUnits = balances[token];
-                feeEl.textContent = `~${formatToken(estimate.feeUnits)} ${symbol}`;
-                balanceEl.textContent = `Balance: ${formatToken(balanceUnits)} ${symbol}`;
+                settleText(feeEl, `~${formatToken(estimate.feeUnits)} ${symbol}`);
+                settleText(balanceEl, `${formatToken(balanceUnits)} ${symbol}`);
             } catch (e) {
                 if (cancelled) return;
                 console.warn('Fee estimate failed:', e);
-                feeEl.textContent = 'Computed when you send';
-                balanceEl.textContent = '';
+                settleText(feeEl, 'Computed when you send');
+                settleText(balanceEl, 'unavailable');
             }
         })();
 
@@ -370,18 +382,14 @@ export async function sendView() {
         panel.querySelector('#btn-send').addEventListener('click', async () => {
             if (sending) return;
 
-            const errorEl = panel.querySelector('#error');
-            const successEl = panel.querySelector('#success');
-            errorEl.style.display = 'none';
-            successEl.style.display = 'none';
+            clearMsg(msgSlot);
 
             const recipientRaw = panel.querySelector('#recipient').value.trim();
             const amountRaw = panel.querySelector('#amount').value.trim();
             const amountUnits = tokenToUnits(amountRaw);
 
             if (!recipientRaw) {
-                errorEl.textContent = 'Please enter a recipient address.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Please enter a recipient address.');
                 return;
             }
 
@@ -392,14 +400,12 @@ export async function sendView() {
                 const ethers = await getEthers();
                 recipient = ethers.utils.getAddress(recipientRaw);
             } catch (_) {
-                errorEl.textContent = 'Invalid Polygon address.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Invalid Polygon address.');
                 return;
             }
 
             if (isNaN(amountUnits) || amountUnits <= 0) {
-                errorEl.textContent = 'Please enter a valid amount.';
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', 'Please enter a valid amount.');
                 return;
             }
 
@@ -419,8 +425,7 @@ export async function sendView() {
                     onStatus: (label) => { btn.textContent = label; },
                 });
 
-                successEl.style.display = '';
-                panel.querySelector('#tx-hash').textContent = `TX: ${result.txHash.substring(0, 18)}...`;
+                showMsg(msgSlot, 'success', 'Transaction sent successfully!', `TX: ${result.txHash.substring(0, 18)}...`);
                 btn.removeAttribute('aria-busy');
                 btn.textContent = 'Done';
                 showToast('Transaction sent!', 'success');
@@ -455,14 +460,15 @@ export async function sendView() {
 
                 console.error('Token transaction failed:', e);
                 const msg = e.message || '';
+                let errText;
                 if (msg.includes('Insufficient balance')) {
-                    errorEl.textContent = `Insufficient ${symbol} balance to cover amount and fee.`;
+                    errText = `Insufficient ${symbol} balance to cover amount and fee.`;
                 } else if (msg.includes('No GSN relay') || msg.includes('No registered GSN relay') || msg.includes('Relay')) {
-                    errorEl.textContent = 'The gas-abstraction relay is unreachable. Please try again later.';
+                    errText = 'The gas-abstraction relay is unreachable. Please try again later.';
                 } else {
-                    errorEl.textContent = 'Transaction failed. Please try again.';
+                    errText = 'Transaction failed. Please try again.';
                 }
-                errorEl.style.display = '';
+                showMsg(msgSlot, 'error', errText);
             }
         });
     }
