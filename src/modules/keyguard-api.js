@@ -75,6 +75,15 @@ export function createKeyguardFrame() {
     frame.title = 'Nimiq Keyguard';
     // allow-same-origin lets the keyguard access its own IndexedDB key store.
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
+    // Permissions-Policy delegation: grants the keyguard origin the capability to
+    // run the WebAuthn ceremony (navigator.credentials) inside its own iframe, so
+    // the PRF output never transits the wallet. Harmless while the keyguard
+    // delegates the ceremony back to the wallet (CEREMONY_IN_KEYGUARD=false);
+    // load-bearing once that flag is flipped. The grantee MUST be the keyguard
+    // origin (the iframe's src), not the wallet. NOTE: this is the standard
+    // Permissions-Policy `allow=` attribute — distinct from the `sandbox` tokens
+    // (allow-publickey-credentials-*) that an earlier attempt used and reverted.
+    frame.setAttribute('allow', `publickey-credentials-get ${KEYGUARD_ORIGIN}; publickey-credentials-create ${KEYGUARD_ORIGIN}`);
     frame.style.cssText = 'display:none; position:fixed; inset:0; width:100%; height:100%; border:none; z-index:9999;';
 
     const timeout = setTimeout(() => {
@@ -89,6 +98,52 @@ export function createKeyguardFrame() {
     });
 
     document.body.appendChild(frame);
+}
+
+// ── SPIKE — remove after eval. In-iframe WebAuthn self-test trigger ─────────
+// Load the wallet with ?webauthnspike (e.g. https://wallet.example/?webauthnspike)
+// to run the WebAuthn ceremony INSIDE the keyguard iframe and see whether
+// create()+get()+PRF work on this browser (the decisive case is iOS Safari).
+// A query param is used (not a hash) because the router redirects unknown hashes.
+// The keyguard renders its own button so the ceremony runs under user activation
+// in the keyguard origin (as the real flows do); the structured result is posted
+// back here and shown + logged for remote inspection (iOS Safari Web Inspector).
+function maybeRunWebAuthnSpike() {
+    if (!/(?:^|[?&])webauthnspike(?:=|&|$)/.test(location.search)) return;
+    if (document.getElementById('webauthn-spike-box')) return; // already running
+
+    const reqId = `spike-${Date.now()}`;
+    const box = document.createElement('pre');
+    box.id = 'webauthn-spike-box';
+    box.style.cssText = 'position:fixed;left:0;bottom:0;width:100%;max-height:45vh;overflow:auto;margin:0;padding:12px;z-index:100000;background:#000;color:#0f0;font:12px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;';
+    box.textContent = 'WebAuthn spike: waiting for keyguard…';
+    document.body.appendChild(box);
+
+    window.addEventListener('message', function onResult(event) {
+        if (!isTrustedKeyguardMessage(event)) return;
+        if (event.data?.type !== 'webauthn-selftest-result') return;
+        if (event.data?.requestId !== reqId) return;
+        box.textContent = 'WebAuthn spike result:\n' + JSON.stringify(event.data.result, null, 2);
+        console.log('[webauthn-spike] result', event.data.result);
+    });
+
+    keyguardReady.then(() => {
+        const frame = document.getElementById('keyguard-frame');
+        if (!frame || !frame.contentWindow) { box.textContent = 'WebAuthn spike: keyguard frame missing'; return; }
+        setFrameVisible(frame, true);
+        box.textContent = 'WebAuthn spike: tap the button in the keyguard to run.';
+        try {
+            frame.contentWindow.postMessage({ type: 'webauthn-selftest', requestId: reqId }, KEYGUARD_ORIGIN);
+        } catch (e) {
+            box.textContent = 'WebAuthn spike: failed to message keyguard: ' + e;
+        }
+    }).catch((e) => { box.textContent = 'WebAuthn spike: keyguard not ready: ' + e; });
+}
+
+if (document.readyState === 'complete') {
+    maybeRunWebAuthnSpike();
+} else {
+    window.addEventListener('load', maybeRunWebAuthnSpike);
 }
 
 // ── Theme sync ──────────────────────────────────────────────────────────

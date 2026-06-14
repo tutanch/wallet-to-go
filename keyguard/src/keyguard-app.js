@@ -512,6 +512,28 @@ function renderDeleteConfirm() {
 // The sandboxed iframe cannot call navigator.credentials directly.
 // Instead, we send requests to the wallet origin and await its response.
 
+// Feature flag: where the WebAuthn ceremony runs.
+//   false (default) → delegated to the wallet origin (the PRF transits the wallet).
+//   true            → run INSIDE this keyguard iframe via keyguard-webauthn.js,
+//                     so the PRF (the wallet's master secret) never leaves this
+//                     origin. Requires the wallet to grant the iframe
+//                     `allow="publickey-credentials-get/create <kg-origin>"`.
+//
+// This is a ONE-WAY, deploy-time switch — NOT a runtime toggle. Credentials are
+// bound to the ceremony's origin (RP ID), and the PRF (hence the derived wallet)
+// differs per RP, so flipping it strands passkeys created under the other mode
+// (users recover via 24 words + re-register). On *.github.io the two origins can
+// never share an rp.id (public suffix). See the plan and keyguard-webauthn.js.
+const CEREMONY_IN_KEYGUARD = false;
+
+// Lazy-load the in-keyguard ceremony module only when needed (mirrors the
+// keyguard-polygon.js lazy pattern). Returns the module namespace.
+let _kgWebauthnPromise = null;
+function loadKgWebauthn() {
+    if (!_kgWebauthnPromise) _kgWebauthnPromise = import('./keyguard-webauthn.js');
+    return _kgWebauthnPromise;
+}
+
 let webauthnReqId = 0;
 
 function requestWebAuthnFromWallet(action, params = {}) {
@@ -552,6 +574,10 @@ function requestWebAuthnFromWallet(action, params = {}) {
 
 async function isPrfSupported() {
     try {
+        if (CEREMONY_IN_KEYGUARD) {
+            const m = await loadKgWebauthn();
+            return await m.isPrfSupported();
+        }
         return await requestWebAuthnFromWallet('isPrfSupported');
     } catch (e) {
         console.debug('PRF support check failed:', e);
@@ -584,21 +610,42 @@ async function getExcludeCredentialIds() {
 
 async function createWebAuthnCredential(userId, userName, prfSalt) {
     const excludeCredentialIds = await getExcludeCredentialIds();
-    return await requestWebAuthnFromWallet('create', {
+    const params = {
         userId: Array.from(userId),
         userName,
         prfSalt: Array.from(prfSalt),
         excludeCredentialIds,
-    });
+    };
+    if (CEREMONY_IN_KEYGUARD) {
+        const m = await loadKgWebauthn();
+        return await m.createCredential(params);
+    }
+    return await requestWebAuthnFromWallet('create', params);
     // Returns { credentialId: number[], prfKey: number[] }
 }
 
 async function getWebAuthnPrfKey(credentialId, prfSalt) {
-    return await requestWebAuthnFromWallet('get', {
+    const params = {
         credentialId: Array.from(new Uint8Array(credentialId)),
         prfSalt: Array.from(new Uint8Array(prfSalt)),
-    });
+    };
+    if (CEREMONY_IN_KEYGUARD) {
+        const m = await loadKgWebauthn();
+        return await m.getPrfKey(params);
+    }
+    return await requestWebAuthnFromWallet('get', params);
     // Returns number[] (PRF key bytes)
+}
+
+// Discoverable-credential PRF for passkey login/restore. Routed by the flag like
+// the other ceremony helpers. Returns { prfKey: number[], credentialId: number[] }.
+async function getWebAuthnForRestore(prfSalt) {
+    const saltArr = Array.from(new Uint8Array(prfSalt));
+    if (CEREMONY_IN_KEYGUARD) {
+        const m = await loadKgWebauthn();
+        return await m.getDiscoverablePrfKey(saltArr);
+    }
+    return await requestWebAuthnFromWallet('getForRestore', { prfSalt: saltArr });
 }
 
 // ── Balance lookup delegation ─────────────────────────────────────────────
@@ -1922,8 +1969,7 @@ async function flowRestoreWithPasskey(args) {
         let credentialId;
 
         try {
-            const params = { prfSalt: Array.from(RESTORE_PRF_SALT) };
-            const result = await requestWebAuthnFromWallet('getForRestore', params);
+            const result = await getWebAuthnForRestore(RESTORE_PRF_SALT);
             prfKey = result.prfKey;
             credentialId = result.credentialId;
         } catch (err) {
@@ -1985,8 +2031,7 @@ async function flowSwitchAccount() {
         let credentialId;
 
         try {
-            const params = { prfSalt: Array.from(RESTORE_PRF_SALT) };
-            const result = await requestWebAuthnFromWallet('getForRestore', params);
+            const result = await getWebAuthnForRestore(RESTORE_PRF_SALT);
             prfKey = result.prfKey;
             credentialId = result.credentialId;
         } catch (err) {
@@ -2163,6 +2208,53 @@ function showPasswordFormForCashlinkCrypto(args, workerCommand, title) {
     });
 }
 
+// ── SPIKE — remove after eval. In-keyguard WebAuthn self-test ──────────────
+// Renders a button INSIDE this keyguard frame. The tap gives THIS origin the
+// user activation that WebAuthn requires (matching the real flows, which trigger
+// the ceremony from the keyguard's own UI) before running create()+get() with
+// PRF via keyguard-webauthn.js. The structured result is shown here and posted
+// back to the wallet. Stateless — does not touch currentSession.
+function renderWebAuthnSelfTest(source, requestId) {
+    const existing = document.getElementById('webauthn-selftest-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'webauthn-selftest-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;color:#111;font:13px/1.5 ui-monospace,monospace;padding:24px;overflow:auto;';
+    overlay.innerHTML = `
+        <h2 style="font:600 18px system-ui,sans-serif;margin:0 0 8px;">WebAuthn in-iframe self-test</h2>
+        <p style="margin:0 0 16px;">Ceremony origin: <code>${escHtml(location.origin)}</code></p>
+        <button id="st-run" type="button" style="padding:14px 22px;font-size:16px;cursor:pointer;">Run self-test (create + get)</button>
+        <pre id="st-out" style="white-space:pre-wrap;word-break:break-word;margin-top:16px;"></pre>
+    `;
+    document.body.appendChild(overlay);
+
+    const out = overlay.querySelector('#st-out');
+    const btn = overlay.querySelector('#st-run');
+    btn.onclick = async () => {
+        btn.disabled = true;
+        out.textContent = 'Running… approve the two biometric/PIN prompts.';
+        let result;
+        try {
+            const m = await loadKgWebauthn();
+            const prfSalt = Array.from(crypto.getRandomValues(new Uint8Array(32)));
+            result = await m.selfTest(prfSalt);
+        } catch (err) {
+            result = {
+                fatal: true,
+                errorName: err?.name || null,
+                errorMessage: err?.message || String(err),
+                userAgent: navigator.userAgent,
+                origin: location.origin,
+            };
+        }
+        out.textContent = JSON.stringify(result, null, 2);
+        btn.disabled = false;
+        btn.textContent = 'Run again';
+        try { source.postMessage({ type: 'webauthn-selftest-result', requestId, result }, WALLET_ORIGIN); } catch (_) {}
+    };
+}
+
 // ── Main message handler ──────────────────────────────────────────────────
 
 window.addEventListener('message', async (event) => {
@@ -2191,6 +2283,12 @@ window.addEventListener('message', async (event) => {
 
     // Balance responses are handled by the requestBalancesFromWallet listener — ignore here.
     if (event.data?.type === 'balance-response') return;
+
+    // SPIKE — remove after eval. In-iframe WebAuthn self-test trigger.
+    if (event.data?.type === 'webauthn-selftest') {
+        renderWebAuthnSelfTest(event.source, event.data.requestId);
+        return;
+    }
 
     const { sessionId, command, args } = event.data;
     if (typeof command !== 'string') return;
