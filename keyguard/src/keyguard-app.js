@@ -524,7 +524,7 @@ function renderDeleteConfirm() {
 // differs per RP, so flipping it strands passkeys created under the other mode
 // (users recover via 24 words + re-register). On *.github.io the two origins can
 // never share an rp.id (public suffix). See the plan and keyguard-webauthn.js.
-const CEREMONY_IN_KEYGUARD = false;
+const CEREMONY_IN_KEYGUARD = true;
 
 // Lazy-load the in-keyguard ceremony module only when needed (mirrors the
 // keyguard-polygon.js lazy pattern). Returns the module namespace.
