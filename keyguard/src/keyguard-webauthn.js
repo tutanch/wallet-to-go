@@ -70,14 +70,6 @@ export async function createCredential({ userId, userName, prfSalt, excludeCrede
                 { alg: -257, type: 'public-key' },  // RS256
             ],
             authenticatorSelection: {
-                // Force the platform authenticator (Touch ID / Windows Hello /
-                // Android / iCloud-GPM). Leaving this unset lets Chrome route the
-                // credential to a phone-over-hybrid or security key that may not
-                // support the PRF (hmac-secret) extension → prf.enabled:false →
-                // the wallet can't be derived. Platform authenticators support PRF
-                // and sync within the user's ecosystem (needed for cross-device
-                // restore via RESTORE_PRF_SALT).
-                authenticatorAttachment: 'platform',
                 userVerification: 'required',
                 residentKey: 'required',
             },
@@ -201,7 +193,7 @@ export async function selfTest(prfSalt) {
                     { alg: -7, type: 'public-key' },
                     { alg: -257, type: 'public-key' },
                 ],
-                authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'required' },
+                authenticatorSelection: { userVerification: 'required', residentKey: 'required' },
                 extensions: { prf: { eval: { first: salt } } },
             },
         });

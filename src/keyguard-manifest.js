@@ -25,9 +25,9 @@ export const KEYGUARD_MANIFEST = {
         "src/keyguard-app.js": "sha256-EbKhNgE66JqvlaLkzD6v0AT6uRZgHl7RQrgy5vo0DLo=",
         "src/keyguard-init.js": "sha256-dOBYux7iF31M9m84Bx6PSUTiUXVLGEUrTKNip7fMqN8=",
         "src/keyguard-polygon.js": "sha256-cigyTIpwJ2VGOmjg/apf0fiT8W4qTsB1b7U3hbvKkeY=",
-        "src/keyguard-webauthn.js": "sha256-zuHwZCJPH9olW3nDtoeh73aUs/i5ZP8PWw2qgZinxs0=",
+        "src/keyguard-webauthn.js": "sha256-KRKE7UgZHigfiwTxYRK/iVo/qHq2GPOM2DQqfg7e2FA=",
         "src/keyguard-worker.js": "sha256-KLf7uNYH/98tbMdXI5fCgttnZGmrt5a+ba6LxwNgGEs=",
         "src/styles/keyguard.css": "sha256-qCJN+bbKEIZXQBfNvQtfKs4TVqn4YDJuJxPiWQ4XoNk=",
     },
-    digest: "sha256-8pFl79QjRetPDwBK3+NRmZJu2IK3Pm7heK7wdO1XXQ4=",
+    digest: "sha256-GBfD9CoiBbpABB+B4mteaxxw7LqLWVcOfDh/jgiQvcA=",
 };
