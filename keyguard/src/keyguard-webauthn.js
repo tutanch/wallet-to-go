@@ -162,6 +162,9 @@ export async function selfTest(prfSalt) {
         prfPresentOnCreate: false,
         prfPresentOnGet: false,
         prfMatch: false,
+        largeBlobSupported: false,
+        largeBlobWritten: false,
+        largeBlobReadOk: false,
         errorName: null,
         errorMessage: null,
         isUVPAA: null,
@@ -194,12 +197,13 @@ export async function selfTest(prfSalt) {
                     { alg: -257, type: 'public-key' },
                 ],
                 authenticatorSelection: { userVerification: 'required', residentKey: 'required' },
-                extensions: { prf: { eval: { first: salt } } },
+                extensions: { prf: { eval: { first: salt } }, largeBlob: { support: 'preferred' } },
             },
         });
         result.createOk = true;
         const ext = credential.getClientExtensionResults();
         result.prfEnabledOnCreate = !!ext.prf?.enabled;
+        result.largeBlobSupported = !!ext.largeBlob?.supported;
         createPrf = ext.prf?.results?.first ? new Uint8Array(ext.prf.results.first) : null;
         result.prfPresentOnCreate = !!createPrf;
         credentialId = new Uint8Array(credential.rawId);
@@ -210,15 +214,18 @@ export async function selfTest(prfSalt) {
         return result; // no credential → can't run get()
     }
 
-    // ── get() ──
+    // ── get() #1 — PRF output + (if supported) largeBlob write ──
+    const testBlob = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
     try {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const exts = { prf: { eval: { first: salt } } };
+        if (result.largeBlobSupported) exts.largeBlob = { write: testBlob };
         const assertion = await navigator.credentials.get({
             publicKey: {
                 challenge,
                 allowCredentials: [{ type: 'public-key', id: credentialId }],
                 userVerification: 'required',
-                extensions: { prf: { eval: { first: salt } } },
+                extensions: exts,
             },
         });
         result.getOk = true;
@@ -232,10 +239,36 @@ export async function selfTest(prfSalt) {
             }
             result.prfMatch = same;
         }
+        if (result.largeBlobSupported) result.largeBlobWritten = !!ext.largeBlob?.written;
     } catch (err) {
         if (!result.errorName) {
             result.errorName = err?.name || null;
             result.errorMessage = err?.message || String(err);
+        }
+    }
+
+    // ── get() #2 — read the largeBlob back (only if the write reported success) ──
+    if (result.largeBlobWritten) {
+        try {
+            const challenge = crypto.getRandomValues(new Uint8Array(32));
+            const assertion = await navigator.credentials.get({
+                publicKey: {
+                    challenge,
+                    allowCredentials: [{ type: 'public-key', id: credentialId }],
+                    userVerification: 'required',
+                    extensions: { largeBlob: { read: true } },
+                },
+            });
+            const ext = assertion.getClientExtensionResults();
+            const blob = ext.largeBlob?.blob ? new Uint8Array(ext.largeBlob.blob) : null;
+            result.largeBlobReadOk = !!blob
+                && blob.length === testBlob.length
+                && blob.every((b, i) => b === testBlob[i]);
+        } catch (err) {
+            if (!result.errorName) {
+                result.errorName = err?.name || null;
+                result.errorMessage = err?.message || String(err);
+            }
         }
     }
 
