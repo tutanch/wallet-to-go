@@ -1,5 +1,5 @@
 import { navigate } from '../router.js';
-import { unlock, hasPassword, restoreWithPasskey } from '../modules/keyguard-api.js';
+import { unlock, getWebAuthnInfo, restoreWithPasskey } from '../modules/keyguard-api.js';
 
 export function lockView() {
     const el = document.createElement('div');
@@ -13,10 +13,8 @@ export function lockView() {
             </div>
             <div class="nq-card-body" style="text-align: center;">
                 <p class="nq-text" style="margin-bottom: 20px;">Unlock your wallet to continue.</p>
-                <button class="nq-button" id="btn-passkey">Login with Passkey</button>
-                <p style="margin: 16px 0 0;">
-                    <button class="nq-button-s" id="btn-password" style="display: none;">Use Password</button>
-                </p>
+                <button class="nq-button" id="btn-passkey" style="display: none;">Login with Passkey</button>
+                <button class="nq-button" id="btn-password" style="display: none;">Unlock with Password</button>
                 <p class="nq-text error-text" id="lock-error" role="alert" style="display: none; margin-top: 12px;"></p>
                 <p style="margin-top: 24px;">
                     <a href="#welcome" class="nq-link" id="link-different" style="font-size: 13px;">Use a different wallet</a>
@@ -25,23 +23,35 @@ export function lockView() {
         </div>
     `;
 
-    // Show password button only if a password is set
-    hasPassword().then(hasPw => {
-        if (!active) return;
-        if (hasPw) {
-            el.querySelector('#btn-password').style.display = '';
-        }
-    }).catch(() => {});
-
     const errorEl = el.querySelector('#lock-error');
+    const passkeyBtn = el.querySelector('#btn-passkey');
+    const passwordBtn = el.querySelector('#btn-password');
 
-    // Passkey login — routes through keyguard's restoreWithPasskey flow which
-    // verifies the passkey's PRF output can derive a valid wallet.
-    el.querySelector('#btn-passkey').addEventListener('click', async () => {
-        const btn = el.querySelector('#btn-passkey');
-        btn.disabled = true;
-        btn.setAttribute('aria-busy', 'true');
-        btn.textContent = 'Authenticating...';
+    // Show only the auth method that matches this wallet's type. Passkey wallets
+    // (created via "Create New Wallet") unlock with the passkey; imported wallets
+    // unlock with their password. The two are mutually exclusive — a wallet never
+    // has both — so we never offer the passkey-restore path to a password wallet
+    // (that path re-derives a wallet FROM the passkey and would not match an
+    // imported seed).
+    getWebAuthnInfo().then(info => {
+        if (!active) return;
+        if (info?.hasWebAuthn) {
+            passkeyBtn.style.display = '';
+        } else {
+            passwordBtn.style.display = '';
+        }
+    }).catch(() => {
+        // On failure, fall back to password unlock — never auto-offer the passkey
+        // restore path, which is the safe default.
+        if (active) passwordBtn.style.display = '';
+    });
+
+    // Passkey login — only shown for passkey wallets. Routes through the
+    // keyguard's restoreWithPasskey flow.
+    passkeyBtn.addEventListener('click', async () => {
+        passkeyBtn.disabled = true;
+        passkeyBtn.setAttribute('aria-busy', 'true');
+        passkeyBtn.textContent = 'Authenticating...';
         errorEl.style.display = 'none';
 
         try {
@@ -49,9 +59,9 @@ export function lockView() {
             if (active) navigate('#dashboard');
         } catch (e) {
             if (!active) return;
-            btn.disabled = false;
-            btn.removeAttribute('aria-busy');
-            btn.textContent = 'Login with Passkey';
+            passkeyBtn.disabled = false;
+            passkeyBtn.removeAttribute('aria-busy');
+            passkeyBtn.textContent = 'Login with Passkey';
             if (e.message !== 'User cancelled') {
                 errorEl.textContent = 'Passkey authentication failed. Please try again.';
                 errorEl.style.display = '';
@@ -60,11 +70,10 @@ export function lockView() {
     });
 
     // Password unlock via keyguard (password stays in keyguard origin)
-    el.querySelector('#btn-password').addEventListener('click', async () => {
-        const btn = el.querySelector('#btn-password');
-        btn.disabled = true;
-        btn.setAttribute('aria-busy', 'true');
-        btn.textContent = 'Opening keyguard...';
+    passwordBtn.addEventListener('click', async () => {
+        passwordBtn.disabled = true;
+        passwordBtn.setAttribute('aria-busy', 'true');
+        passwordBtn.textContent = 'Opening keyguard...';
         errorEl.style.display = 'none';
 
         try {
@@ -76,9 +85,9 @@ export function lockView() {
                 errorEl.textContent = 'Could not verify password. Please try again.';
                 errorEl.style.display = '';
             }
-            btn.disabled = false;
-            btn.removeAttribute('aria-busy');
-            btn.textContent = 'Use Password';
+            passwordBtn.disabled = false;
+            passwordBtn.removeAttribute('aria-busy');
+            passwordBtn.textContent = 'Unlock with Password';
         }
     });
 

@@ -1056,57 +1056,56 @@ async function flowImportWallet() {
         const errorEl = ui.querySelector('#error');
         if (words.length !== 24) { showError(errorEl, 'Please enter exactly 24 words.'); return; }
 
-        // Keep a copy of words for later steps
+        // Keep a copy of words for the next step
         const wordsCopy = words.slice();
 
-        // Passkey is mandatory for import
-        setUI(renderWebAuthnPrompt());
+        // Step 2: Password entry. Imported ("log in with words") wallets are
+        // password-protected and NEVER receive a passkey — passkeys are reserved
+        // for the Create flow. This keeps the two wallet types cleanly separate:
+        // a passkey can only UNLOCK the wallet it was created for (its PRF is the
+        // wallet's seed), so it can never represent an externally-imported seed.
+        // Mixing them is what made imported funds appear to "vanish" when the
+        // passkey-restore path re-derived a different wallet from the passkey.
+        setUI(renderPasswordForm({
+            title: 'Set a Password',
+            subtitle: 'Encrypts your imported wallet on this device. Your 24 words stay your only backup.',
+            isNew: true,
+        }));
 
-        // No skip/fallback — cancel is the only alternative
-        ui.querySelector('#btn-skip').textContent = 'Cancel';
-        ui.querySelector('#btn-skip').onclick = () => {
+        ui.querySelector('#btn-cancel').onclick = () => {
             wordsCopy.fill('');
             rejectSession('User cancelled');
         };
 
-        ui.querySelector('#btn-enable').onclick = async () => {
-            const btn = ui.querySelector('#btn-enable');
+        ui.querySelector('#pw-form').addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const pw = ui.querySelector('#password').value;
+            const pwConfirm = ui.querySelector('#password-confirm').value;
             const errorEl2 = ui.querySelector('#error');
-            setButtonState(btn, 'Registering...', true);
+
+            if (pw.length < 8) { showError(errorEl2, 'Password must be at least 8 characters.'); return; }
+            if (pw !== pwConfirm) { showError(errorEl2, 'Passwords do not match.'); return; }
+
+            const btn = ui.querySelector('#btn-submit');
+            setButtonState(btn, 'Importing...', true);
 
             try {
-                const prfSalt = generatePrfSalt();
-                const userId = crypto.getRandomValues(new Uint8Array(32));
-                const { credentialId, prfKey } = await createWebAuthnCredential(
-                    userId, nextPasskeyName(), prfSalt,
-                );
-
-                // Show progress during the async worker import (keeps the
-                // overlay up instead of blanking it).
-                setUI(renderLoadingCard('Importing Wallet'));
-
-                // Import wallet with passkey only (no password)
                 const result = await callWorker('importWallet', {
                     words: wordsCopy,
-                    prfKey: Array.from(prfKey),
-                    credentialId: Array.from(credentialId),
-                    prfSalt: Array.from(prfSalt),
+                    password: pw,
                 });
-
-                prfKey.fill(0);
+                ui.querySelector('#password').value = '';
+                ui.querySelector('#password-confirm').value = '';
                 wordsCopy.fill('');
                 resolveSession({ address: result.address });
             } catch (err) {
-                if (err.message === 'PRF_NOT_SUPPORTED') {
-                    showError(errorEl2, 'Your device does not support this feature.');
-                } else if (err.name === 'NotAllowedError') {
-                    showError(errorEl2, 'Registration was cancelled or timed out.');
-                } else {
-                    showError(errorEl2, 'Could not set up biometric unlock.');
-                }
-                setButtonState(btn, 'Try Again', false);
+                ui.querySelector('#password').value = '';
+                ui.querySelector('#password-confirm').value = '';
+                setButtonState(btn, 'Confirm', false);
+                // The worker throws on an invalid mnemonic — the most likely cause.
+                showError(errorEl2, 'Import failed. Please re-check your 24 recovery words.');
             }
-        };
+        });
     });
 }
 
@@ -2336,6 +2335,29 @@ window.addEventListener('message', async (event) => {
             rejectSession(`Unknown command: ${command}`);
     }
 });
+
+// ── Standalone-visit notice ────────────────────────────────────────────────
+// This origin hosts ONLY the keyguard component. Embedded by the wallet it
+// renders sensitive UI on demand; opened directly (top-level) it would otherwise
+// be a blank page. Show a friendly pointer to the real wallet instead. Gated on
+// window.parent === window so it can NEVER appear inside a frame (hostile or
+// otherwise), and on ORIGINS_CONFIGURED so local/dev (placeholder) is untouched.
+if (ORIGINS_CONFIGURED && window.parent === window) {
+    const notice = document.createElement('div');
+    notice.style.cssText = 'max-width:420px;margin:15vh auto 0;padding:0 24px;text-align:center;font-family:system-ui,-apple-system,sans-serif;';
+    const h = document.createElement('h1');
+    h.textContent = 'Nimiq Keyguard';
+    h.style.cssText = 'font-size:22px;margin:0 0 12px;';
+    const p = document.createElement('p');
+    p.textContent = 'This page is the secure key component used by the Nimiq Wallet. It has nothing to show on its own.';
+    p.style.cssText = 'font-size:15px;line-height:1.5;opacity:.75;margin:0 0 20px;';
+    const a = document.createElement('a');
+    a.href = WALLET_APP_URL; // substituted at deploy; safe (own-origin config value)
+    a.textContent = 'Open the Nimiq Wallet →';
+    a.style.cssText = 'font-size:15px;font-weight:600;';
+    notice.append(h, p, a);
+    document.body.appendChild(notice);
+}
 
 // ── Signal readiness ──────────────────────────────────────────────────────
 // Sent after the module has loaded so the wallet knows the keyguard is ready.

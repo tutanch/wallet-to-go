@@ -265,10 +265,11 @@ export function settingsView() {
                     webauthnBtn.style.display = 'none';
                 }
             } else {
-                settleText(webauthnStatus, 'Use your fingerprint, face, or device PIN instead of typing your password.');
-                webauthnBtn.textContent = 'Enable Biometric Unlock';
-                webauthnBtn.style.display = '';
-                webauthnBtn.disabled = false;
+                // Imported / password wallets never receive a passkey — passkeys
+                // are reserved for the Create flow, keeping the two wallet types
+                // cleanly separate. There is nothing to manage here, so hide the
+                // section entirely rather than offering to add a passkey.
+                securitySection.style.display = 'none';
             }
         } catch (e) {
             console.debug('WebAuthn info check failed:', e);
